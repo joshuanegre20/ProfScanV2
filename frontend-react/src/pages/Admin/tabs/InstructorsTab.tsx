@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
 import api from "../../../api/axios";
+import * as XLSX from "xlsx";
 
 interface Props {
   setActiveTab: (tab: string) => void;
@@ -25,11 +26,26 @@ interface Instructor {
 interface Schedule {
   id: number;
   subject: string;
+  subject_code: string;
   day: string;
-  start: string;
-  ends: string;
+  time: string;
+  end_time?: string;
   room?: string;
   status: string;
+  device_id?: number | null;
+}
+
+interface AttendanceLog {
+  id: number;
+  date: string;
+  time: string;
+  end_time?: string;
+  subject: string;
+  subject_code: string;
+  room: string;
+  status: string;
+  duration?: string;
+  day: string;
 }
 
 const departments = [
@@ -41,7 +57,23 @@ const departments = [
   { value: "CAS", label: "College of Arts and Sciences (CAS)" },
 ];
 
-const DAY_ORDER = ["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"];
+const DAY_ORDER = ["MWF", "TTH", "SAT", "SUN", "SAT-SUN"];
+
+const statusColors: Record<string, { bg: string; color: string }> = {
+  Upcoming: { bg: "#dbeafe", color: "#1d4ed8" },
+  Ongoing:  { bg: "#fef9c3", color: "#a16207" },
+  Present:  { bg: "#dcfce7", color: "#15803d" },
+  Absent:   { bg: "#fee2e2", color: "#dc2626" },
+  Attended: { bg: "#f3e8ff", color: "#7e22ce" },
+};
+
+const dayColors: Record<string, { bg: string; color: string }> = {
+  MWF:       { bg: "#e0e7ff", color: "#4338ca" },
+  TTH:       { bg: "#f3e8ff", color: "#7e22ce" },
+  SAT:       { bg: "#ffedd5", color: "#c2410c" },
+  SUN:       { bg: "#fee2e2", color: "#dc2626" },
+  "SAT-SUN": { bg: "#fce7f3", color: "#be185d" },
+};
 
 function useProtectedImage(url: string | null) {
   const [src, setSrc] = useState<string | null>(null);
@@ -69,15 +101,308 @@ function InstructorAvatar({ url, name, size = 36 }: { url: string | null; name: 
   );
 }
 
+// ── Export to Excel Function ─────────────────────────────────────
+const exportToExcel = (logs: AttendanceLog[], instructorName: string) => {
+  // Prepare data for Excel
+  const excelData = logs.map(log => ({
+    'Date': new Date(log.date).toLocaleDateString('en-PH'),
+    'Subject': log.subject,
+    'Subject Code': log.subject_code,
+    'Room': log.room || '—',
+    'Time In': log.time?.substring(0, 5) || '—',
+    'Time Out': log.end_time?.substring(0, 5) || '—',
+    'Duration': log.duration || '—',
+    'Status': log.status
+  }));
+
+  // Create worksheet
+  const ws = XLSX.utils.json_to_sheet(excelData);
+  
+  // Set column widths
+  const colWidths = [
+    { wch: 12 }, // Date
+    { wch: 30 }, // Subject
+    { wch: 15 }, // Subject Code
+    { wch: 10 }, // Room
+    { wch: 10 }, // Time In
+    { wch: 10 }, // Time Out
+    { wch: 10 }, // Duration
+    { wch: 12 }, // Status
+  ];
+  ws['!cols'] = colWidths;
+
+  // Create workbook
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Attendance Logs');
+
+  // Generate filename with instructor name and date
+  const fileName = `${instructorName.replace(/\s+/g, '_')}_attendance_${new Date().toISOString().split('T')[0]}.xlsx`;
+
+  // Save file
+  XLSX.writeFile(wb, fileName);
+};
+
+// ── Attendance Logs Modal ─────────────────────────────────────────────────
+// ── Attendance Logs Modal ─────────────────────────────────────────────────
+// ── Attendance Logs Modal ─────────────────────────────────────────────────
+// ── Attendance Logs Modal ─────────────────────────────────────────────────
+function AttendanceLogsModal({ 
+  instructor, 
+  onClose 
+}: { 
+  instructor: Instructor; 
+  onClose: () => void;
+}) {
+  const [logs, setLogs] = useState<AttendanceLog[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [filterMonth, setFilterMonth] = useState("");
+  const [filterStatus, setFilterStatus] = useState("");
+
+  useEffect(() => {
+    api.get(`/admin/instructors/${instructor.id}/attendance-logs`)  // ← changed
+      .then(res => {
+        const allLogs = res.data.data || (Array.isArray(res.data) ? res.data : []);
+        // attendance_logs_db entries are all valid, no success filter needed
+        setLogs(allLogs);
+      })
+      .catch(err => console.error("Failed to fetch attendance logs:", err))
+      .finally(() => setLoading(false));
+}, [instructor.id]);
+
+  // Calculate summary statistics (only from successful scans)
+  const totalScans = logs.length;
+  const presentCount = logs.filter(log => log.status === "Present" || log.status === "Attended").length;
+  const absentCount = logs.filter(log => log.status === "Absent").length;
+  const attendanceRate = totalScans > 0 ? Math.round((presentCount / totalScans) * 100) : 0;
+
+  const filteredLogs = logs.filter(log => {
+    const matchMonth = !filterMonth || log.date.startsWith(filterMonth);
+    const matchStatus = !filterStatus || log.status === filterStatus;
+    return matchMonth && matchStatus;
+  });
+
+  const formatDate = (dateStr: string) => {
+    return new Date(dateStr).toLocaleDateString("en-PH", {
+      year: "numeric",
+      month: "short",
+      day: "numeric",
+      hour: "2-digit",
+      minute: "2-digit"
+    });
+  };
+
+  const handleExport = () => {
+    exportToExcel(filteredLogs, instructor.name);
+  };
+
+  return (
+    <div
+      style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.55)", zIndex: 250, display: "flex", alignItems: "center", justifyContent: "center", padding: "1rem" }}
+      onClick={e => { if (e.target === e.currentTarget) onClose(); }}
+    >
+      <div style={{ background: "#fff", borderRadius: "1.25rem", width: "100%", maxWidth: "64rem", maxHeight: "90vh", overflowY: "auto", boxShadow: "0 25px 50px rgba(0,0,0,0.25)", display: "flex", flexDirection: "column" }}>
+
+        {/* Header */}
+        <div style={{ position: "relative", background: "linear-gradient(135deg, #312e81, #4338ca)", borderRadius: "1.25rem 1.25rem 0 0", padding: "1.5rem" }}>
+          <button onClick={onClose} style={{ position: "absolute", top: "1rem", right: "1rem", background: "rgba(255,255,255,0.15)", border: "none", color: "#fff", width: "2rem", height: "2rem", borderRadius: "50%", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>
+            <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+          
+          <div style={{ display: "flex", alignItems: "center", gap: "1rem" }}>
+            <div style={{ width: "4rem", height: "4rem", borderRadius: "50%", border: "3px solid rgba(255,255,255,0.4)", overflow: "hidden", background: "#eef2ff", flexShrink: 0 }}>
+              <InstructorAvatar url={instructor.profile_url} name={instructor.name} size={64} />
+            </div>
+            <div>
+              <h2 style={{ fontSize: "1.25rem", fontWeight: 700, color: "#fff" }}>{instructor.name}</h2>
+              <p style={{ color: "#a5b4fc", fontSize: "0.875rem" }}>{instructor.instructor_id} · {instructor.department}</p>
+              <p style={{ color: "#a5b4fc", fontSize: "0.75rem", marginTop: "0.25rem" }}>
+                Showing only successful scans
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <div style={{ padding: "1.5rem", display: "flex", flexDirection: "column", gap: "1.5rem" }}>
+
+          {/* Summary Cards */}
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: "1rem" }}>
+            <div style={{ background: "#f9fafb", borderRadius: "0.75rem", padding: "1rem", border: "1px solid #f3f4f6" }}>
+              <p style={{ fontSize: "0.7rem", fontWeight: 600, color: "#6b7280", textTransform: "uppercase" }}>Total Successful Scans</p>
+              <p style={{ fontSize: "1.5rem", fontWeight: 700, color: "#1f2937" }}>{totalScans}</p>
+            </div>
+            <div style={{ background: "#f9fafb", borderRadius: "0.75rem", padding: "1rem", border: "1px solid #f3f4f6" }}>
+              <p style={{ fontSize: "0.7rem", fontWeight: 600, color: "#6b7280", textTransform: "uppercase" }}>Present</p>
+              <p style={{ fontSize: "1.5rem", fontWeight: 700, color: "#16a34a" }}>{presentCount}</p>
+            </div>
+            <div style={{ background: "#f9fafb", borderRadius: "0.75rem", padding: "1rem", border: "1px solid #f3f4f6" }}>
+              <p style={{ fontSize: "0.7rem", fontWeight: 600, color: "#6b7280", textTransform: "uppercase" }}>Absent</p>
+              <p style={{ fontSize: "1.5rem", fontWeight: 700, color: "#dc2626" }}>{absentCount}</p>
+            </div>
+            <div style={{ background: "#f9fafb", borderRadius: "0.75rem", padding: "1rem", border: "1px solid #f3f4f6" }}>
+              <p style={{ fontSize: "0.7rem", fontWeight: 600, color: "#6b7280", textTransform: "uppercase" }}>Attendance Rate</p>
+              <p style={{ fontSize: "1.5rem", fontWeight: 700, color: "#4f46e5" }}>{attendanceRate}%</p>
+            </div>
+          </div>
+
+          {/* Filters and Export */}
+          <div style={{ display: "flex", gap: "1rem", flexWrap: "wrap", justifyContent: "space-between", alignItems: "center" }}>
+            <div style={{ display: "flex", gap: "1rem", flexWrap: "wrap" }}>
+              <input
+                type="month"
+                value={filterMonth}
+                onChange={e => setFilterMonth(e.target.value)}
+                placeholder="Filter by month"
+                style={{ padding: "0.5rem 1rem", border: "1px solid #e5e7eb", borderRadius: "0.5rem", fontSize: "0.875rem" }}
+              />
+              <select
+                value={filterStatus}
+                onChange={e => setFilterStatus(e.target.value)}
+                style={{ padding: "0.5rem 1rem", border: "1px solid #e5e7eb", borderRadius: "0.5rem", fontSize: "0.875rem" }}
+              >
+                <option value="">All Status</option>
+                <option value="Present">Present</option>
+                <option value="Attended">Attended</option>
+                <option value="Absent">Absent</option>
+              </select>
+            </div>
+            
+            {/* Export Button */}
+            <button
+              onClick={handleExport}
+              disabled={filteredLogs.length === 0}
+              style={{
+                background: filteredLogs.length === 0 ? "#e5e7eb" : "#059669",
+                color: "#fff",
+                border: "none",
+                padding: "0.5rem 1rem",
+                borderRadius: "0.5rem",
+                fontSize: "0.875rem",
+                fontWeight: 500,
+                cursor: filteredLogs.length === 0 ? "not-allowed" : "pointer",
+                display: "flex",
+                alignItems: "center",
+                gap: "0.5rem",
+                transition: "background 0.15s"
+              }}
+              onMouseEnter={e => {
+                if (filteredLogs.length > 0) e.currentTarget.style.background = "#047857";
+              }}
+              onMouseLeave={e => {
+                if (filteredLogs.length > 0) e.currentTarget.style.background = "#059669";
+              }}
+            >
+              <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+              </svg>
+              Export to Excel
+            </button>
+          </div>
+
+          {/* Logs Table */}
+          {loading ? (
+            <div style={{ display: "flex", justifyContent: "center", padding: "3rem" }}>
+              <div style={{ width: "2rem", height: "2rem", border: "2px solid #e5e7eb", borderTopColor: "#4f46e5", borderRadius: "50%", animation: "spin 0.7s linear infinite" }} />
+            </div>
+          ) : filteredLogs.length === 0 ? (
+            <div style={{ textAlign: "center", padding: "3rem", background: "#f9fafb", borderRadius: "0.75rem" }}>
+              <svg width="48" height="48" fill="none" stroke="#9ca3af" viewBox="0 0 24 24" style={{ margin: "0 auto 1rem" }}>
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+              </svg>
+              <p style={{ color: "#6b7280", fontSize: "0.875rem" }}>No successful scan logs found</p>
+            </div>
+          ) : (
+            <div style={{ overflowX: "auto", border: "1px solid #f3f4f6", borderRadius: "0.75rem" }}>
+              <table style={{ width: "100%", fontSize: "0.875rem", borderCollapse: "collapse" }}>
+                <thead style={{ background: "#f9fafb", borderBottom: "1px solid #f3f4f6" }}>
+                  <tr>
+                    <th style={{ padding: "0.75rem 1rem", textAlign: "left", fontSize: "0.7rem", fontWeight: 600, color: "#6b7280", textTransform: "uppercase" }}>Date/Time</th>
+                    <th style={{ padding: "0.75rem 1rem", textAlign: "left", fontSize: "0.7rem", fontWeight: 600, color: "#6b7280", textTransform: "uppercase" }}>Day</th>
+                    <th style={{ padding: "0.75rem 1rem", textAlign: "left", fontSize: "0.7rem", fontWeight: 600, color: "#6b7280", textTransform: "uppercase" }}>Subject</th>
+                    <th style={{ padding: "0.75rem 1rem", textAlign: "left", fontSize: "0.7rem", fontWeight: 600, color: "#6b7280", textTransform: "uppercase" }}>Code</th>
+                    <th style={{ padding: "0.75rem 1rem", textAlign: "left", fontSize: "0.7rem", fontWeight: 600, color: "#6b7280", textTransform: "uppercase" }}>Room</th>
+                    <th style={{ padding: "0.75rem 1rem", textAlign: "left", fontSize: "0.7rem", fontWeight: 600, color: "#6b7280", textTransform: "uppercase" }}>Time</th>
+                    <th style={{ padding: "0.75rem 1rem", textAlign: "left", fontSize: "0.7rem", fontWeight: 600, color: "#6b7280", textTransform: "uppercase" }}>Status</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredLogs.map((log, idx) => (
+                    <tr key={log.id} style={{ borderBottom: "1px solid #f3f4f6", background: idx % 2 === 0 ? "#fff" : "#fafafa" }}>
+                      <td style={{ padding: "0.75rem 1rem", color: "#1f2937" }}>{formatDate(log.date)}</td>
+                      <td style={{ padding: "0.75rem 1rem" }}>
+                        <span style={{ padding: "0.125rem 0.5rem", borderRadius: "9999px", fontSize: "0.75rem", fontWeight: 600, background: dayColors[log.day]?.bg || "#eef2ff", color: dayColors[log.day]?.color || "#4f46e5" }}>
+                          {log.day}
+                        </span>
+                      </td>
+                      <td style={{ padding: "0.75rem 1rem", color: "#374151" }}>{log.subject}</td>
+                      <td style={{ padding: "0.75rem 1rem", fontFamily: "monospace", color: "#6b7280" }}>{log.subject_code}</td>
+                      <td style={{ padding: "0.75rem 1rem", color: "#6b7280" }}>{log.room || "—"}</td>
+                      <td style={{ padding: "0.75rem 1rem", color: "#6b7280" }}>
+                        {log.time}{log.end_time ? ` – ${log.end_time}` : ""}
+                      </td>
+                      <td style={{ padding: "0.75rem 1rem" }}>
+                        <span style={{ padding: "0.125rem 0.5rem", borderRadius: "9999px", fontSize: "0.75rem", fontWeight: 500, background: statusColors[log.status]?.bg || "#f3f4f6", color: statusColors[log.status]?.color || "#6b7280" }}>
+                          {log.status}
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              
+              {/* Footer with count and export info */}
+              <div style={{ padding: "0.75rem 1rem", borderTop: "1px solid #f3f4f6", background: "#fafafa", fontSize: "0.75rem", color: "#6b7280", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <span>Showing {filteredLogs.length} of {logs.length} successful scans</span>
+                <div style={{ display: "flex", gap: "1rem" }}>
+                  <button
+                    onClick={() => {
+                      setFilterMonth("");
+                      setFilterStatus("");
+                    }}
+                    style={{ background: "none", border: "none", color: "#4f46e5", cursor: "pointer", fontSize: "0.75rem" }}
+                  >
+                    Clear Filters
+                  </button>
+                  {filteredLogs.length > 0 && (
+                    <span style={{ color: "#059669" }}>
+                      ✓ Ready to export
+                    </span>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+      <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+    </div>
+  );
+}
+
 // ── Profile Modal ─────────────────────────────────────────────────
-function InstructorProfileModal({ instructor, onClose }: { instructor: Instructor; onClose: () => void }) {
+function InstructorProfileModal({ 
+  instructor, 
+  onClose,
+  onViewAttendance 
+}: { 
+  instructor: Instructor; 
+  onClose: () => void;
+  onViewAttendance: () => void;
+}) {
   const avatarSrc = useProtectedImage(instructor.profile_url);
   const [schedules, setSchedules] = useState<Schedule[]>([]);
   const [loadingSched, setLoadingSched] = useState(true);
 
   useEffect(() => {
+    // Fetch only schedules that belong to this instructor
     api.get("/admin/schedules", { params: { instructor_id: instructor.instructor_id } })
-      .then(res => setSchedules(res.data))
+      .then(res => {
+        const all = Array.isArray(res.data) ? res.data : res.data?.data ?? [];
+        // Extra safety filter in case backend doesn't filter properly
+        const mine = all.filter((s: any) => s.instructor_id === instructor.instructor_id);
+        setSchedules(mine);
+      })
       .catch(() => {})
       .finally(() => setLoadingSched(false));
   }, [instructor.instructor_id]);
@@ -136,6 +461,34 @@ function InstructorProfileModal({ instructor, onClose }: { instructor: Instructo
 
         <div style={{ padding: "1.5rem", display: "flex", flexDirection: "column", gap: "1.5rem", marginTop: "-1rem" }}>
 
+          {/* View Attendance Button */}
+          <button
+            onClick={onViewAttendance}
+            style={{
+              background: "#4f46e5",
+              color: "#fff",
+              border: "none",
+              padding: "0.75rem 1rem",
+              borderRadius: "0.5rem",
+              fontSize: "0.875rem",
+              fontWeight: 600,
+              cursor: "pointer",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: "0.5rem",
+              width: "100%",
+              transition: "background 0.15s"
+            }}
+            onMouseEnter={e => (e.currentTarget.style.background = "#4338ca")}
+            onMouseLeave={e => (e.currentTarget.style.background = "#4f46e5")}
+          >
+            <svg width="18" height="18" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
+            </svg>
+            View Attendance Logs
+          </button>
+
           {/* ── Basic Info Card ── */}
           <div style={{ background: "#fff", borderRadius: "1rem", border: "1px solid #f3f4f6", boxShadow: "0 1px 3px rgba(0,0,0,0.06)", overflow: "hidden" }}>
             <div style={{ padding: "0.875rem 1.25rem", borderBottom: "1px solid #f3f4f6", display: "flex", alignItems: "center", gap: "0.5rem" }}>
@@ -180,17 +533,20 @@ function InstructorProfileModal({ instructor, onClose }: { instructor: Instructo
                 {sortedSchedules.map(sched => (
                   <div key={sched.id} style={{ display: "flex", alignItems: "center", gap: "0.875rem", padding: "0.75rem", background: "#f9fafb", borderRadius: "0.625rem", border: "1px solid #f3f4f6" }}>
                     {/* Day pill */}
-                    <div style={{ minWidth: "4.5rem", textAlign: "center", background: "#eef2ff", borderRadius: "0.5rem", padding: "0.3rem 0.5rem" }}>
-                      <p style={{ fontSize: "0.65rem", fontWeight: 700, color: "#4f46e5", textTransform: "uppercase" }}>{sched.day?.slice(0, 3)}</p>
+                    <div style={{ minWidth: "3.5rem", textAlign: "center", background: dayColors[sched.day]?.bg ?? "#eef2ff", borderRadius: "0.5rem", padding: "0.3rem 0.5rem" }}>
+                      <p style={{ fontSize: "0.65rem", fontWeight: 700, color: dayColors[sched.day]?.color ?? "#4f46e5", textTransform: "uppercase" }}>{sched.day}</p>
                     </div>
                     <div style={{ flex: 1, minWidth: 0 }}>
-                      <p style={{ fontSize: "0.825rem", fontWeight: 600, color: "#1f2937", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{sched.subject}</p>
+                      <p style={{ fontSize: "0.825rem", fontWeight: 600, color: "#1f2937", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                        {sched.subject}
+                        <span style={{ fontSize: "0.7rem", color: "#9ca3af", fontFamily: "monospace", marginLeft: "0.4rem" }}>({sched.subject_code})</span>
+                      </p>
                       <p style={{ fontSize: "0.7rem", color: "#9ca3af", marginTop: "0.125rem" }}>
-                        {sched.start} – {sched.ends}
+                        {sched.time}{sched.end_time ? ` – ${sched.end_time}` : ""}
                         {sched.room && <span> · {sched.room}</span>}
                       </p>
                     </div>
-                    <span style={{ fontSize: "0.65rem", fontWeight: 700, padding: "0.2rem 0.5rem", borderRadius: "9999px", background: sched.status === "Active" ? "#dcfce7" : "#f3f4f6", color: sched.status === "Active" ? "#16a34a" : "#9ca3af", whiteSpace: "nowrap" }}>
+                    <span style={{ fontSize: "0.65rem", fontWeight: 700, padding: "0.2rem 0.5rem", borderRadius: "9999px", background: statusColors[sched.status]?.bg ?? "#f3f4f6", color: statusColors[sched.status]?.color ?? "#9ca3af", whiteSpace: "nowrap" }}>
                       {sched.status}
                     </span>
                   </div>
@@ -217,6 +573,7 @@ export default function InstructorsTab({ setActiveTab }: Props) {
   const [departmentFilter, setDeptFilter] = useState("");
   const [loading, setLoading]           = useState(false);
   const [selected, setSelected]         = useState<Instructor | null>(null);
+  const [showAttendanceLogs, setShowAttendanceLogs] = useState(false);
 
   const fetchInstructors = () => {
     setLoading(true);
@@ -257,8 +614,26 @@ export default function InstructorsTab({ setActiveTab }: Props) {
   return (
     <div style={{ background: "#fff", borderRadius: "0.75rem", boxShadow: "0 1px 3px rgba(0,0,0,0.08)", padding: "1.5rem", color: "black" }}>
 
-      {/* Profile Modal */}
-      {selected && <InstructorProfileModal instructor={selected} onClose={() => setSelected(null)} />}
+      {selected && !showAttendanceLogs && (
+        <InstructorProfileModal 
+          instructor={selected} 
+          onClose={() => {
+            setSelected(null);
+            setShowAttendanceLogs(false);
+          }}
+          onViewAttendance={() => setShowAttendanceLogs(true)}
+        />
+      )}
+
+      {selected && showAttendanceLogs && (
+        <AttendanceLogsModal
+          instructor={selected}
+          onClose={() => {
+            setSelected(null);
+            setShowAttendanceLogs(false);
+          }}
+        />
+      )}
 
       {/* Header */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1.25rem" }}>

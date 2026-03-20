@@ -1,22 +1,27 @@
 // src/pages/Admin/tabs/AddInstructorTab.tsx
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import type { ChangeEvent } from "react";
 import QRCode from "qrcode";
 import api from "../../../api/axios";
 
-const departments = [
-  { value: "CCS", label: "College of Computer Studies (CCS)" },
-  { value: "CBA", label: "College of Business Administration (CBA)" },
-  { value: "CTE", label: "College of Teacher Education (CTE)" },
-  { value: "CCJ", label: "College of Criminal Justice (CCJ)" },
-  { value: "CHM", label: "College of Hospitality Management (CHM)" },
-  { value: "CAS", label: "College of Arts and Sciences (CAS)" },
-];
+interface Subject {
+  id: number;
+  subject: string;
+  subject_code: string;
+  department: string;
+}
+
+interface Department {
+  id: number;
+  degree_program: string;
+  college: string;
+  created_at: string;
+}
 
 const defaultForm = {
   name: "", email: "", password: "", password_confirmation: "",
   employee_id: "", address: "", age: "", gender: "", contact_no: "",
-  birth_date: "", department: "", specialization: "",
+  birth_date: "", department: "", specialization: "", // Keep specialization field
 };
 
 const inputStyle: React.CSSProperties = {
@@ -46,6 +51,85 @@ export default function AddInstructorTab() {
     instructorName: string;
     employeeId: string;
   } | null>(null);
+  
+  // State for subjects
+  const [subjects, setSubjects] = useState<Subject[]>([]);
+  const [loadingSubjects, setLoadingSubjects] = useState(false);
+  const [filteredSubjects, setFilteredSubjects] = useState<Subject[]>([]);
+  
+  // New state for departments
+  const [departments, setDepartments] = useState<Department[]>([]);
+  const [loadingDepartments, setLoadingDepartments] = useState(false);
+
+  // Fetch departments and subjects when component mounts
+  useEffect(() => {
+    fetchDepartments();
+    fetchSubjects();
+  }, []);
+
+  // Filter subjects when department changes
+  useEffect(() => {
+    if (form.department) {
+      const filtered = subjects.filter(s => s.department === form.department);
+      setFilteredSubjects(filtered);
+      // Clear specialization if current selection doesn't match department
+      if (form.specialization) {
+        const currentSubject = subjects.find(s => s.subject === form.specialization);
+        if (currentSubject && currentSubject.department !== form.department) {
+          setForm(prev => ({ ...prev, specialization: "" }));
+        }
+      }
+    } else {
+      setFilteredSubjects([]);
+    }
+  }, [form.department, subjects]);
+
+  const fetchDepartments = async () => {
+    setLoadingDepartments(true);
+    try {
+      const response = await api.get("/admin/departments");
+      console.log("Departments response:", response.data);
+      
+      // Handle different response structures
+      if (Array.isArray(response.data)) {
+        setDepartments(response.data);
+      } else if (response.data.data && Array.isArray(response.data.data)) {
+        setDepartments(response.data.data);
+      } else if (response.data.departments && Array.isArray(response.data.departments)) {
+        setDepartments(response.data.departments);
+      } else {
+        setDepartments([]);
+      }
+    } catch (err) {
+      console.error("Failed to fetch departments:", err);
+      // Fallback to empty array
+      setDepartments([]);
+    } finally {
+      setLoadingDepartments(false);
+    }
+  };
+
+  const fetchSubjects = async () => {
+    setLoadingSubjects(true);
+    try {
+      const response = await api.get("/admin/subjects");
+      // Handle different response structures
+      if (Array.isArray(response.data)) {
+        setSubjects(response.data);
+      } else if (response.data.data && Array.isArray(response.data.data)) {
+        setSubjects(response.data.data);
+      } else if (response.data.subjects && Array.isArray(response.data.subjects)) {
+        setSubjects(response.data.subjects);
+      } else {
+        setSubjects([]);
+      }
+    } catch (err) {
+      console.error("Failed to fetch subjects:", err);
+      setSubjects([]);
+    } finally {
+      setLoadingSubjects(false);
+    }
+  };
 
   const set = (key: string, value: string) =>
     setForm(prev => ({ ...prev, [key]: value }));
@@ -110,6 +194,15 @@ export default function AddInstructorTab() {
     link.download = `qr-${successData.employeeId}.png`;
     link.click();
   };
+
+  // Group subjects by department for better organization
+  const subjectsByDepartment = subjects.reduce((acc, subject) => {
+    if (!acc[subject.department]) {
+      acc[subject.department] = [];
+    }
+    acc[subject.department].push(subject);
+    return acc;
+  }, {} as Record<string, Subject[]>);
 
   // ── Success Screen ─────────────────────────────────────────────────────────
   if (successData) {
@@ -203,10 +296,7 @@ export default function AddInstructorTab() {
             <p style={{ color: "#a5b4fc", fontSize: "0.8rem" }}>Add New Instructor</p>
           </div>
         </div>
-        <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", background: "rgba(255,255,255,0.1)", padding: "0.375rem 0.875rem", borderRadius: "9999px", fontSize: "0.75rem" }}>
-          <span style={{ width: "0.375rem", height: "0.375rem", borderRadius: "50%", background: "#4ade80" }} />
-          Admin Access
-        </div>
+        
       </div>
 
       {/* Form Card */}
@@ -276,19 +366,87 @@ export default function AddInstructorTab() {
           <section>
             <h3 style={{ fontSize: "0.7rem", fontWeight: 700, color: "#4f46e5", textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: "1rem" }}>Academic Information</h3>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: "1.25rem" }}>
+              
+              {/* Department dropdown - from database */}
               <div>
-                <label style={labelStyle}>Department *</label>
-                <select value={form.department} onChange={e => set("department", e.target.value)} required style={inputStyle}>
+                <label style={labelStyle}>
+                  Department *
+                  {loadingDepartments && <span style={{ marginLeft: "0.5rem", color: "#9ca3af", fontSize: "0.7rem" }}>(Loading...)</span>}
+                </label>
+                <select 
+                  value={form.department} 
+                  onChange={e => set("department", e.target.value)} 
+                  required 
+                  style={inputStyle}
+                  disabled={loadingDepartments}
+                >
                   <option value="">Select Department</option>
-                  {departments.map(d => <option key={d.value} value={d.value}>{d.label}</option>)}
+                  {departments.map(dept => (
+                    <option key={dept.id} value={dept.degree_program}>
+                      {dept.degree_program} — {dept.college}
+                    </option>
+                  ))}
+                  {departments.length === 0 && !loadingDepartments && (
+                    <option value="" disabled>No departments available</option>
+                  )}
                 </select>
                 {errors.department && <p style={errorStyle}>{errors.department}</p>}
+                {departments.length === 0 && !loadingDepartments && (
+                  <p style={{ fontSize: "0.7rem", color: "#f59e0b", marginTop: "0.25rem" }}>
+                    ⚠️ No departments found. Please add departments first in the Add Department tab.
+                  </p>
+                )}
               </div>
+              
+              {/* Specialization dropdown - shows subjects based on selected department */}
               <div style={{ gridColumn: "1 / -1" }}>
-                <label style={labelStyle}>Specialization *</label>
-                <input type="text" value={form.specialization} onChange={e => set("specialization", e.target.value)}
-                  placeholder="e.g., Web Development, Database Management" required style={inputStyle} />
+                <label style={labelStyle}>
+                  Specialization (Subject) *
+                  {loadingSubjects && <span style={{ marginLeft: "0.5rem", color: "#9ca3af", fontSize: "0.7rem" }}>(Loading...)</span>}
+                  {!form.department && <span style={{ marginLeft: "0.5rem", color: "#f59e0b", fontSize: "0.7rem" }}>Select department first</span>}
+                </label>
+                
+                {form.department ? (
+                  <select
+                    value={form.specialization}
+                    onChange={e => set("specialization", e.target.value)}
+                    required
+                    style={inputStyle}
+                    disabled={loadingSubjects}
+                  >
+                    <option value="">Select a subject specialization</option>
+                    
+                    {/* Show filtered subjects for the selected department */}
+                    {filteredSubjects.map(subject => (
+                      <option key={subject.id} value={subject.subject}>
+                        {subject.subject_code} — {subject.subject}
+                      </option>
+                    ))}
+                    
+                    {/* If no subjects available for this department */}
+                    {filteredSubjects.length === 0 && !loadingSubjects && (
+                      <option value="" disabled>No subjects available for this department</option>
+                    )}
+                  </select>
+                ) : (
+                  <input
+                    type="text"
+                    value={form.specialization}
+                    onChange={e => set("specialization", e.target.value)}
+                    placeholder="Please select a department first"
+                    disabled
+                    style={{ ...inputStyle, background: "#f9fafb", color: "#9ca3af", cursor: "not-allowed" }}
+                  />
+                )}
+                
                 {errors.specialization && <p style={errorStyle}>{errors.specialization}</p>}
+                
+                {/* Helper text */}
+                {form.department && filteredSubjects.length === 0 && !loadingSubjects && (
+                  <p style={{ fontSize: "0.7rem", color: "#f59e0b", marginTop: "0.25rem" }}>
+                    ⚠️ No subjects found for this department. Please add subjects first in the Subjects tab.
+                  </p>
+                )}
               </div>
             </div>
           </section>

@@ -18,22 +18,32 @@ export default function StaffTab({ setActiveTab }: { setActiveTab: (t: string) =
   const [avatars, setAvatars]   = useState<Record<number, string>>({});
   const [deleting, setDeleting] = useState<number | null>(null);
 
+  // Load avatar blob via API for a single staff member
+  const loadAvatar = useCallback(async (s: Staff) => {
+    if (!s.profile_url) return;
+    setAvatars(prev => {
+      if (prev[s.id]) return prev; // already loaded, skip
+      return prev;
+    });
+    try {
+      const res = await api.get(`/staff/${s.id}/photo`, { responseType: "blob" });
+      const url = URL.createObjectURL(res.data);
+      setAvatars(prev => ({ ...prev, [s.id]: url }));
+    } catch {}
+  }, []); // ← empty deps, uses functional updater to avoid stale state
+
   const fetchStaff = useCallback(async () => {
     try {
       const res = await api.get("/staff", { params: { search } });
       setStaff(res.data);
-      // Load avatars for staff with photos
-      res.data.forEach(async (s: Staff) => {
-        if (s.profile_url && !avatars[s.id]) {
-          try {
-            const img = await api.get(`/staff/${s.id}/photo`, { responseType: "blob" });
-            setAvatars(prev => ({ ...prev, [s.id]: URL.createObjectURL(img.data) }));
-          } catch {}
-        }
+      res.data.forEach((s: Staff) => {
+        if (s.profile_url) loadAvatar(s);
       });
-    } catch {}
-    finally { setLoading(false); }
-  }, [search]);
+    } catch {
+    } finally {
+      setLoading(false);
+    }
+  }, [search, loadAvatar]);
 
   useEffect(() => {
     fetchStaff();
@@ -45,8 +55,15 @@ export default function StaffTab({ setActiveTab }: { setActiveTab: (t: string) =
     try {
       await api.delete(`/staff/${id}`);
       setStaff(prev => prev.filter(s => s.id !== id));
-    } catch {}
-    finally { setDeleting(null); }
+      // Revoke blob URL to free memory
+      if (avatars[id]) {
+        URL.revokeObjectURL(avatars[id]);
+        setAvatars(prev => { const n = { ...prev }; delete n[id]; return n; });
+      }
+    } catch {
+    } finally {
+      setDeleting(null);
+    }
   };
 
   const handleToggleStatus = async (id: number, currentStatus: string) => {
@@ -57,6 +74,23 @@ export default function StaffTab({ setActiveTab }: { setActiveTab: (t: string) =
     } catch {}
   };
 
+  // ── Avatar component — shows blob URL or fallback icon ──────────
+  const Avatar = ({ s }: { s: Staff }) => (
+    <div style={{ width: "3rem", height: "3rem", borderRadius: "50%", overflow: "hidden", background: "#eef2ff", border: "2px solid #e0e7ff", flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>
+      {avatars[s.id] ? (
+        <img
+          src={avatars[s.id]}
+          alt={s.name}
+          style={{ width: "100%", height: "100%", objectFit: "cover" }}
+        />
+      ) : (
+        <svg width="20" height="20" fill="none" stroke="#a5b4fc" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+        </svg>
+      )}
+    </div>
+  );
+
   return (
     <div style={{ fontFamily: "ui-sans-serif, system-ui, sans-serif" }}>
 
@@ -64,7 +98,9 @@ export default function StaffTab({ setActiveTab }: { setActiveTab: (t: string) =
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "1.5rem", flexWrap: "wrap", gap: "1rem" }}>
         <div>
           <h1 style={{ fontSize: "1.125rem", fontWeight: 700, color: "#1f2937" }}>Staff</h1>
-          <p style={{ color: "#6b7280", fontSize: "0.8rem", marginTop: "0.125rem" }}>{staff.length} member{staff.length !== 1 ? "s" : ""}</p>
+          <p style={{ color: "#6b7280", fontSize: "0.8rem", marginTop: "0.125rem" }}>
+            {staff.length} member{staff.length !== 1 ? "s" : ""}
+          </p>
         </div>
         <div style={{ display: "flex", gap: "0.75rem", alignItems: "center" }}>
           <div style={{ position: "relative" }}>
@@ -74,7 +110,8 @@ export default function StaffTab({ setActiveTab }: { setActiveTab: (t: string) =
               style={{ padding: "0.5rem 1rem 0.5rem 2.25rem", border: "1px solid #e5e7eb", borderRadius: "0.5rem", fontSize: "0.875rem", outline: "none", width: "200px" }}
             />
             <svg style={{ position: "absolute", left: "0.625rem", top: "50%", transform: "translateY(-50%)" }} width="14" height="14" fill="none" stroke="#9ca3af" viewBox="0 0 24 24">
-              <circle cx="11" cy="11" r="8" strokeWidth={2} /><line x1="21" y1="21" x2="16.65" y2="16.65" strokeWidth={2} />
+              <circle cx="11" cy="11" r="8" strokeWidth={2} />
+              <line x1="21" y1="21" x2="16.65" y2="16.65" strokeWidth={2} />
             </svg>
           </div>
           <button onClick={() => setActiveTab("add-staff")}
@@ -96,7 +133,9 @@ export default function StaffTab({ setActiveTab }: { setActiveTab: (t: string) =
       ) : staff.length === 0 ? (
         <div style={{ textAlign: "center", padding: "4rem", background: "#fff", borderRadius: "1rem", border: "1px dashed #e5e7eb" }}>
           <p style={{ fontWeight: 600, color: "#1f2937" }}>No staff found</p>
-          <p style={{ color: "#9ca3af", fontSize: "0.8rem", marginTop: "0.375rem" }}>Click Add Staff to register a new member.</p>
+          <p style={{ color: "#9ca3af", fontSize: "0.8rem", marginTop: "0.375rem" }}>
+            Click Add Staff to register a new member.
+          </p>
         </div>
       ) : (
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))", gap: "1rem" }}>
@@ -105,15 +144,7 @@ export default function StaffTab({ setActiveTab }: { setActiveTab: (t: string) =
 
               {/* Avatar + name */}
               <div style={{ display: "flex", alignItems: "center", gap: "0.875rem" }}>
-                <div style={{ width: "3rem", height: "3rem", borderRadius: "50%", overflow: "hidden", background: "#eef2ff", border: "2px solid #e0e7ff", flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>
-                  {avatars[s.id] ? (
-                    <img src={avatars[s.id]} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
-                  ) : (
-                    <svg width="20" height="20" fill="none" stroke="#a5b4fc" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-                    </svg>
-                  )}
-                </div>
+                <Avatar s={s} />
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <p style={{ fontWeight: 700, fontSize: "0.9rem", color: "#1f2937", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{s.name}</p>
                   <p style={{ fontSize: "0.75rem", color: "#9ca3af", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{s.email}</p>
@@ -132,7 +163,9 @@ export default function StaffTab({ setActiveTab }: { setActiveTab: (t: string) =
 
               {/* Status + role */}
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                <span style={{ fontSize: "0.65rem", fontWeight: 700, padding: "0.2rem 0.6rem", borderRadius: "9999px", background: "#eef2ff", color: "#4f46e5", textTransform: "uppercase" }}>Staff</span>
+                <span style={{ fontSize: "0.65rem", fontWeight: 700, padding: "0.2rem 0.6rem", borderRadius: "9999px", background: "#eef2ff", color: "#4f46e5", textTransform: "uppercase" }}>
+                  Staff
+                </span>
                 <span style={{ fontSize: "0.65rem", fontWeight: 700, padding: "0.2rem 0.6rem", borderRadius: "9999px", background: s.status === "Active" ? "#dcfce7" : "#f3f4f6", color: s.status === "Active" ? "#16a34a" : "#9ca3af", textTransform: "uppercase" }}>
                   {s.status}
                 </span>
