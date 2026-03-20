@@ -31,6 +31,12 @@ class User extends Authenticatable implements JWTSubject
         'department',
         'qr_payload',
         'last_scanned_at',
+        'staff_id',
+        'contact_no',   
+        'address',      
+        'age',          
+        'gender',       
+        'birth_date', 
         
     ];
 

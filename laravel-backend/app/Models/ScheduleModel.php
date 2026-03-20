@@ -9,6 +9,7 @@ class ScheduleModel extends Model
     //
 
     protected $table = 'schedule';
+      public $timestamps = false; 
 
     protected $fillable =[
 
@@ -19,7 +20,11 @@ class ScheduleModel extends Model
     'end_time',
     'day', 
     'status',
-    'subject_code'
+    'subject_code',
+    'device_id',
+    'room',
+    'attendance',
+    'scanned_at' 
 
     ];
 }

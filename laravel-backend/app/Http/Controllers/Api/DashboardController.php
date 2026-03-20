@@ -31,12 +31,75 @@ class DashboardController extends Controller
             'upcoming_events' => $upcomingEvents,
         ]);
     }
+    public function departmentStats()
+{
+    try {
+        $total = \App\Models\User::where('role', 'instructor')->count();
+
+        $stats = \App\Models\User::where('role', 'instructor')
+            ->selectRaw('department, COUNT(*) as count, SUM(CASE WHEN status = "Active" THEN 1 ELSE 0 END) as active_count')
+            ->groupBy('department')
+            ->orderByDesc('count')
+            ->get()
+            ->map(fn($d) => [
+                'department'   => $d->department ?? 'Unassigned',
+                'count'        => (int) $d->count,
+                'active_count' => (int) $d->active_count,
+                'percentage'   => $total > 0 ? round(($d->count / $total) * 100, 1) : 0,
+            ]);
+
+        return response()->json($stats);
+    } catch (\Exception $e) {
+        return response()->json([], 200);
+    }
+}
+
+public function eventStats()
+{
+    try {
+        $today = now()->startOfDay();
+
+        $upcoming = \App\Models\EventModel::where('date', '>=', $today)
+            ->selectRaw('DATE_FORMAT(date, "%b %Y") as month, COUNT(*) as count')
+            ->groupBy('month')
+            ->orderBy('date')
+            ->limit(6)
+            ->get()
+            ->map(fn($e) => [
+                'month' => $e->month,
+                'count' => (int) $e->count,
+                'type'  => 'upcoming',
+            ]);
+
+        $past = \App\Models\EventModel::where('date', '<', $today)
+            ->selectRaw('DATE_FORMAT(date, "%b %Y") as month, COUNT(*) as count')
+            ->groupBy('month')
+            ->orderByDesc('date')
+            ->limit(6)
+            ->get()
+            ->map(fn($e) => [
+                'month' => $e->month,
+                'count' => (int) $e->count,
+                'type'  => 'past',
+            ]);
+
+        return response()->json($upcoming->merge($past)->values());
+    } catch (\Exception $e) {
+        return response()->json([], 200);
+    }
+}
 
     public function instructors()
     {
         $instructors = $this->services->getAll();
         return response()->json($instructors);
     }
+
+    public function staffs(Request $request)
+{
+    $staff = $this->services->getAllStaff($request->only(['search']));
+    return response()->json($staff);
+}
 
     public function getEvents(Request $request)
     {
