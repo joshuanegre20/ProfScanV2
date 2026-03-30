@@ -103,8 +103,8 @@ services:
       - ./frontend-react:/app
       - /app/node_modules
     environment:
-      VITE_API_URL:    http://192.168.0.101:8000
-      VITE_SOCKET_URL: http://192.168.0.101:3001
+      VITE_API_URL:    http://172.17.96.1:8000
+      VITE_SOCKET_URL: http://172.17.96.1:3001
     networks:
       - profscan
 

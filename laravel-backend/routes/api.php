@@ -125,4 +125,5 @@ Route::middleware('auth:api')->group(function () {
     Route::get('/instructor/schedules',        [InstructorController::class, 'schedules']);
     Route::get('/instructor/scan-logs',        [InstructorController::class, 'myScanLogs']);
     Route::get('/instructor/attendance-logs',  [InstructorController::class, 'myAttendanceLogs']);
+     Route::get('/instructor/attendance-logs-me',  [InstructorController::class, 'myAttendanceLogsMe']);
 });

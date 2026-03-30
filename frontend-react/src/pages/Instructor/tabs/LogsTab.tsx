@@ -59,7 +59,7 @@ export default function LogsTab() {
 
   const fetchLogs = () => {
     setLoading(true);
-    api.get("/instructor/attendance-logs")
+    api.get("/instructor/attendance-logs-me")
       .then(res => {
         const data = res.data.data || (Array.isArray(res.data) ? res.data : []);
         setLogs(data);

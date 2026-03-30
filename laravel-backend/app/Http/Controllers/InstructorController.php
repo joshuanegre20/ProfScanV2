@@ -588,6 +588,43 @@ public function myAttendanceLogs(Request $request)
         'data'    => $logs,
     ]);
 }
+public function myAttendanceLogsMe(Request $request)
+{
+    $user = auth()->user();
+
+    $month = $request->get('month');
+    
+
+    $query = DB::table('attendance_logs_db');
+
+    if ($month) {
+        $query->whereRaw("LEFT(date, 7) = ?", [$month]);
+    }
+
+    $logs = $query
+        ->orderBy('date', 'desc')
+        ->orderBy('time_in', 'desc') ->where('instructor_id', $user->instructor_id)
+        ->get()
+        ->map(function ($log) {
+            return [
+                'id'            => $log->id,
+                'instructor_id' => $log->instructor_id,
+                'date'          => $log->date,
+                'day'           => $log->day,
+                'subject'       => $log->subject,
+                'code'          => $log->code,
+                'room'          => $log->room,
+                'time_in'       => $log->time_in,
+                'time_out'      => $log->time_out,
+                'status'        => $log->status,
+            ];
+        });
+
+    return response()->json([
+        'success' => true,
+        'data'    => $logs,
+    ]);
+}
 
 /**
  * Get scan logs for the authenticated instructor (for instructor portal)
