@@ -2,13 +2,12 @@
 import React, { useEffect, useState } from "react";
 import api from "../../../api/axios";
 
-interface Instructor {
+interface Device {
   id: number;
   name: string;
-  employee_id: string;
-  instructor_id: string;
-  department: string;
-  role: string;
+  status: "online" | "offline";
+  paired: boolean;
+  chip_id: string | null;
 }
 
 interface Event {
@@ -20,12 +19,9 @@ interface Event {
   start: string;
   ends?: string;
   location: string;
-  type: "Academic" | "Administrative" | "Social" | "Training";
+  type: "Academic" | "Administrative" | "Others";
   status: "Upcoming" | "Ongoing" | "Completed";
   attendees: number;
-  instructor_id?: string;
-  instructor_name?: string;
-  for_all_instructors?: boolean;
 }
 
 interface EventForm {
@@ -38,8 +34,6 @@ interface EventForm {
   location: string;
   type: Event["type"]; 
   status: Event["status"];
-  instructor_id: string;
-  for_all_instructors: boolean;
 }
 
 const defaultForm: EventForm = {
@@ -52,13 +46,11 @@ const defaultForm: EventForm = {
   location: "",
   type: "Academic", 
   status: "Upcoming",
-  instructor_id: "",
-  for_all_instructors: false,
 };
 
 const typeGradients: Record<string, string> = {
-  Academic: "linear-gradient(135deg, #3b82f6, #2563eb)",
-  Administrative: "linear-gradient(135deg, #a855f7, #9333ea)",
+  Academic: "linear-gradient(135deg, #003366, #0055a4)",
+  Administrative: "linear-gradient(135deg, #4f46e5, #6366f1)",
   Training: "linear-gradient(135deg, #22c55e, #16a34a)",
   Social: "linear-gradient(135deg, #f97316, #ea580c)",
 };
@@ -73,10 +65,18 @@ const typeColors: Record<string, { bg: string; color: string }> = {
 const statusColors: Record<string, { bg: string; color: string }> = {
   Upcoming: { bg: "#dcfce7", color: "#15803d" },
   Ongoing: { bg: "#fef9c3", color: "#a16207" },
-  Completed: { bg: "#f3f4f6", color: "#4b5563" },
+  Completed: { bg: "#f1f5f9", color: "#475569" },
 };
 
-// Helper function to calculate status based on dates
+const glassCardStyle = {
+  background: "#fff",
+  borderRadius: "1rem",
+  boxShadow: "0 1px 3px rgba(0,0,0,0.08)",
+  border: "1px solid #e2e8f0",
+  overflow: "hidden",
+  transition: "transform 0.2s, box-shadow 0.2s",
+};
+
 const calculateStatus = (startDate: string, endDate: string): "Upcoming" | "Ongoing" | "Completed" => {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
@@ -98,7 +98,7 @@ const calculateStatus = (startDate: string, endDate: string): "Upcoming" | "Ongo
 
 export default function EventsTab() {
   const [events, setEvents] = useState<Event[]>([]);
-  const [instructors, setInstructors] = useState<Instructor[]>([]);
+  const [devices, setDevices] = useState<Device[]>([]);
   const [loading, setLoading] = useState(false);
   const [showModal, setShowModal] = useState(false);
   const [editing, setEditing] = useState<Event | null>(null);
@@ -106,14 +106,13 @@ export default function EventsTab() {
   const [search, setSearch] = useState("");
   const [typeFilter, setTypeFilter] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
-  const [instructorFilter, setInstructorFilter] = useState("");
+  const [locationFilter, setLocationFilter] = useState("");
   const today = new Date().toISOString().split("T")[0];
 
   const fetchEvents = async () => {
     setLoading(true);
     try {
       const response = await api.get("/admin/events");
-      // Auto-update status based on current date when fetching
       const eventsWithUpdatedStatus = response.data.map((event: Event) => ({
         ...event,
         status: calculateStatus(event.date, event.date_ends)
@@ -126,24 +125,26 @@ export default function EventsTab() {
     }
   };
 
-  const fetchInstructors = async () => {
+  const fetchDevices = async () => {
     try {
-      const response = await api.get("/admin/instructors");
+      const response = await api.get("/devices");
+      let devicesData: Device[] = [];
       if (Array.isArray(response.data)) {
-        setInstructors(response.data);
-      } else if (response.data.data && Array.isArray(response.data.data)) {
-        setInstructors(response.data.data);
+        devicesData = response.data;
+      } else if (response.data?.data && Array.isArray(response.data.data)) {
+        devicesData = response.data.data;
       }
+      // Only show paired devices
+      setDevices(devicesData.filter(d => d.paired));
     } catch (err) {
-      console.error("Failed to fetch instructors:", err);
+      console.error("Failed to fetch devices:", err);
     }
   };
 
   useEffect(() => { 
     fetchEvents();
-    fetchInstructors();
+    fetchDevices();
     
-    // Refresh every minute to update status if needed
     const interval = setInterval(fetchEvents, 60000);
     return () => clearInterval(interval);
   }, []);
@@ -154,7 +155,6 @@ export default function EventsTab() {
     setShowModal(false); 
   };
 
-  // Auto-calculate status whenever dates change
   useEffect(() => {
     if (form.date && form.end_date) {
       const calculatedStatus = calculateStatus(form.date, form.end_date);
@@ -168,7 +168,6 @@ export default function EventsTab() {
       return alert("End date must be after start date");
     }
     
-    // Calculate final status before submitting
     const finalStatus = calculateStatus(form.date, form.end_date);
     
     const payload: any = {
@@ -181,13 +180,7 @@ export default function EventsTab() {
       location: form.location, 
       type: form.type, 
       status: finalStatus,
-      for_all_instructors: form.for_all_instructors,
     };
-    
-    // Add instructor_id if not for all instructors
-    if (!form.for_all_instructors && form.instructor_id) {
-      payload.instructor_id = form.instructor_id;
-    }
     
     try {
       setLoading(true);
@@ -218,8 +211,6 @@ export default function EventsTab() {
       location: event.location, 
       type: event.type, 
       status: event.status,
-      instructor_id: event.instructor_id || "",
-      for_all_instructors: event.for_all_instructors || false,
     });
     setShowModal(true);
   };
@@ -234,60 +225,58 @@ export default function EventsTab() {
     }
   };
 
+  // Get unique locations for filter
+  const uniqueLocations = [...new Set(events.map(e => e.location).filter(Boolean))];
+
   const filtered = events.filter(e => {
     const matchSearch = search === "" || 
       e.title.toLowerCase().includes(search.toLowerCase()) ||
-      (e.instructor_name && e.instructor_name.toLowerCase().includes(search.toLowerCase()));
+      e.location.toLowerCase().includes(search.toLowerCase());
     
     const matchType = typeFilter === "" || e.type === typeFilter;
     const matchStatus = statusFilter === "" || e.status === statusFilter;
+    const matchLocation = locationFilter === "" || e.location === locationFilter;
     
-    let matchInstructor = true;
-    if (instructorFilter) {
-      if (instructorFilter === "all") {
-        matchInstructor = e.for_all_instructors === true;
-      } else {
-        matchInstructor = e.instructor_id === instructorFilter;
-      }
-    }
-    
-    return matchSearch && matchType && matchStatus && matchInstructor;
+    return matchSearch && matchType && matchStatus && matchLocation;
   });
 
   const inputStyle: React.CSSProperties = { 
     padding: "0.625rem 1rem", 
-    border: "1px solid #e5e7eb", 
+    border: "1px solid #e2e8f0", 
     borderRadius: "0.5rem", 
     fontSize: "0.875rem", 
     outline: "none", 
     width: "100%", 
     boxSizing: "border-box", 
-    fontFamily: "inherit" 
+    fontFamily: "inherit",
+    background: "#fff",
+    color: "#1e293b",
+    transition: "border-color 0.2s"
   };
   
   const labelStyle: React.CSSProperties = { 
     display: "block", 
     fontSize: "0.7rem", 
     fontWeight: 600, 
-    color: "#6b7280", 
+    color: "#64748b", 
     textTransform: "uppercase", 
     letterSpacing: "0.05em", 
     marginBottom: "0.375rem" 
   };
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: "1.25rem", color:'black' }}>
+    <div style={{ display: "flex", flexDirection: "column", gap: "1.25rem" }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
         <div>
-          <h2 style={{ fontSize: "1rem", fontWeight: 600, color: "#1f2937" }}>Events Management</h2>
-          <p style={{ fontSize: "0.8rem", color: "#9ca3af", marginTop: "0.125rem" }}>
+          <h2 style={{ fontSize: "1rem", fontWeight: 600, color: "#1e293b" }}>Events Management</h2>
+          <p style={{ fontSize: "0.8rem", color: "#64748b", marginTop: "0.125rem" }}>
             Create and manage official events and activities
           </p>
         </div>
         <button 
           onClick={() => { setEditing(null); setShowModal(true); }}
           style={{ 
-            background: "#4f46e5", 
+            background: "#003366", 
             color: "#fff", 
             border: "none", 
             padding: "0.5rem 1rem", 
@@ -297,10 +286,11 @@ export default function EventsTab() {
             cursor: "pointer", 
             display: "flex", 
             alignItems: "center", 
-            gap: "0.4rem" 
+            gap: "0.4rem",
+            transition: "background 0.2s"
           }}
-          onMouseEnter={e => (e.currentTarget.style.background = "#4338ca")}
-          onMouseLeave={e => (e.currentTarget.style.background = "#4f46e5")}
+          onMouseEnter={e => (e.currentTarget.style.background = "#004c99")}
+          onMouseLeave={e => (e.currentTarget.style.background = "#003366")}
         >
           <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
@@ -335,42 +325,39 @@ export default function EventsTab() {
           {["Upcoming", "Ongoing", "Completed"].map(s => <option key={s}>{s}</option>)}
         </select>
         <select 
-          value={instructorFilter} 
-          onChange={e => setInstructorFilter(e.target.value)} 
+          value={locationFilter} 
+          onChange={e => setLocationFilter(e.target.value)} 
           style={{ ...inputStyle, width: "auto" }}
         >
-          <option value="">All Instructors</option>
-          <option value="all">All Instructors (College-wide)</option>
-          {instructors.map(i => (
-            <option key={i.id} value={i.instructor_id}>{i.name}</option>
+          <option value="">All Locations</option>
+          {uniqueLocations.map(location => (
+            <option key={location} value={location}>{location}</option>
           ))}
         </select>
       </div>
 
       {loading && (
-        <div style={{ display: "flex", justifyContent: "center", alignItems: "center", gap: "0.75rem", padding: "2.5rem", color: "#9ca3af" }}>
-          <div style={{ width: "1.25rem", height: "1.25rem", border: "2px solid #818cf8", borderTopColor: "transparent", borderRadius: "50%", animation: "spin 0.7s linear infinite" }} />
+        <div style={{ display: "flex", justifyContent: "center", alignItems: "center", gap: "0.75rem", padding: "2.5rem", color: "#94a3b8" }}>
+          <div style={{ width: "1.25rem", height: "1.25rem", border: "2px solid #003366", borderTopColor: "transparent", borderRadius: "50%", animation: "spin 0.7s linear infinite" }} />
           Loading events...
         </div>
       )}
 
       {!loading && filtered.length > 0 && (
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))", gap: "1.25rem" }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))", gap: "1.25rem" }}>
           {filtered.map(event => {
-            const instructor = instructors.find(i => i.instructor_id === event.instructor_id);
             return (
               <div 
                 key={event.id} 
-                style={{ 
-                  background: "#fff", 
-                  borderRadius: "0.75rem", 
-                  boxShadow: "0 1px 3px rgba(0,0,0,0.08)", 
-                  overflow: "hidden", 
-                  border: "1px solid #f3f4f6", 
-                  transition: "box-shadow 0.2s" 
+                style={glassCardStyle}
+                onMouseEnter={e => {
+                  e.currentTarget.style.transform = "translateY(-2px)";
+                  e.currentTarget.style.boxShadow = "0 8px 25px -5px rgba(0,0,0,0.1)";
                 }}
-                onMouseEnter={e => (e.currentTarget.style.boxShadow = "0 4px 12px rgba(0,0,0,0.1)")}
-                onMouseLeave={e => (e.currentTarget.style.boxShadow = "0 1px 3px rgba(0,0,0,0.08)")}
+                onMouseLeave={e => {
+                  e.currentTarget.style.transform = "translateY(0)";
+                  e.currentTarget.style.boxShadow = "0 1px 3px rgba(0,0,0,0.08)";
+                }}
               >
                 <div style={{ background: typeGradients[event.type], padding: "1rem" }}>
                   <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "0.5rem" }}>
@@ -381,31 +368,34 @@ export default function EventsTab() {
                       {event.status}
                     </span>
                   </div>
-                  <h3 style={{ color: "#fff", fontWeight: 600, fontSize: "0.95rem" }}>{event.title}</h3>
-                  {event.for_all_instructors ? (
-                    <span style={{ fontSize: "0.65rem", background: "rgba(255,255,255,0.2)", color: "#fff", padding: "0.125rem 0.5rem", borderRadius: "9999px", marginTop: "0.25rem", display: "inline-block" }}>
-                      👥 All Instructors
-                    </span>
-                  ) : event.instructor_id && (
-                    <span style={{ fontSize: "0.65rem", background: "rgba(255,255,255,0.2)", color: "#fff", padding: "0.125rem 0.5rem", borderRadius: "9999px", marginTop: "0.25rem", display: "inline-block" }}>
-                      👤 {instructor?.name || event.instructor_id}
-                    </span>
-                  )}
+                  <h3 style={{ color: "#fff", fontWeight: 600, fontSize: "0.95rem", marginBottom: "0.25rem" }}>{event.title}</h3>
+                  <span style={{ fontSize: "0.65rem", background: "rgba(255,255,255,0.2)", color: "#ffd700", padding: "0.125rem 0.5rem", borderRadius: "9999px", marginTop: "0.25rem", display: "inline-block" }}>
+                    📍 {event.location}
+                  </span>
                 </div>
                 <div style={{ padding: "1rem" }}>
-                  <p style={{ fontSize: "0.8rem", color: "#6b7280", marginBottom: "0.75rem", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>
+                  <p style={{ fontSize: "0.8rem", color: "#475569", marginBottom: "0.75rem", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>
                     {event.description}
                   </p>
-                  <hr style={{ border: "none", borderTop: "1px solid #f3f4f6", marginBottom: "0.75rem" }} />
-                  <div style={{ fontSize: "0.8rem", color: "#6b7280", display: "flex", flexDirection: "column", gap: "0.25rem" }}>
+                  <hr style={{ border: "none", borderTop: "1px solid #e2e8f0", marginBottom: "0.75rem" }} />
+                  <div style={{ fontSize: "0.8rem", color: "#64748b", display: "flex", flexDirection: "column", gap: "0.25rem" }}>
                     <p>📅 {new Date(event.date).toLocaleDateString()} – {new Date(event.date_ends).toLocaleDateString()}</p>
                     <p>🕐 {event.start}{event.ends ? ` – ${event.ends}` : ""}</p>
-                    <p>📍 {event.location}</p>
                     <p>👥 {event.attendees} attendees</p>
                   </div>
                   <div style={{ display: "flex", gap: "0.75rem", marginTop: "0.75rem" }}>
-                    <button onClick={() => handleEdit(event)} style={{ background: "none", border: "none", cursor: "pointer", color: "#6366f1", fontWeight: 500, fontSize: "0.875rem" }}>Edit</button>
-                    <button onClick={() => handleDelete(event.id)} style={{ background: "none", border: "none", cursor: "pointer", color: "#ef4444", fontWeight: 500, fontSize: "0.875rem" }}>Delete</button>
+                    <button onClick={() => handleEdit(event)} style={{ background: "none", border: "none", cursor: "pointer", color: "#003366", fontWeight: 500, fontSize: "0.875rem", transition: "color 0.2s" }}
+                      onMouseEnter={e => (e.currentTarget.style.color = "#004c99")}
+                      onMouseLeave={e => (e.currentTarget.style.color = "#003366")}
+                    >
+                      Edit
+                    </button>
+                    <button onClick={() => handleDelete(event.id)} style={{ background: "none", border: "none", cursor: "pointer", color: "#ef4444", fontWeight: 500, fontSize: "0.875rem", transition: "color 0.2s" }}
+                      onMouseEnter={e => (e.currentTarget.style.color = "#dc2626")}
+                      onMouseLeave={e => (e.currentTarget.style.color = "#ef4444")}
+                    >
+                      Delete
+                    </button>
                   </div>
                 </div>
               </div>
@@ -415,12 +405,12 @@ export default function EventsTab() {
       )}
 
       {!loading && filtered.length === 0 && (
-        <div style={{ textAlign: "center", padding: "4rem", background: "#fff", borderRadius: "0.75rem", boxShadow: "0 1px 3px rgba(0,0,0,0.08)" }}>
-          <svg width="48" height="48" fill="none" stroke="#d1d5db" viewBox="0 0 24 24" style={{ margin: "0 auto 0.75rem" }}>
+        <div style={{ textAlign: "center", padding: "4rem", background: "#fff", borderRadius: "0.75rem", boxShadow: "0 1px 3px rgba(0,0,0,0.08)", border: "1px solid #e2e8f0" }}>
+          <svg width="48" height="48" fill="none" stroke="#94a3b8" viewBox="0 0 24 24" style={{ margin: "0 auto 0.75rem" }}>
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
           </svg>
-          <p style={{ color: "#9ca3af", fontSize: "0.875rem" }}>No events found</p>
-          <button onClick={() => setShowModal(true)} style={{ marginTop: "1rem", background: "none", border: "none", color: "#6366f1", fontWeight: 500, cursor: "pointer", fontSize: "0.875rem" }}>
+          <p style={{ color: "#64748b", fontSize: "0.875rem" }}>No events found</p>
+          <button onClick={() => setShowModal(true)} style={{ marginTop: "1rem", background: "none", border: "none", color: "#003366", fontWeight: 500, cursor: "pointer", fontSize: "0.875rem" }}>
             Create your first event
           </button>
         </div>
@@ -432,8 +422,8 @@ export default function EventsTab() {
           <div style={{ background: "#fff", borderRadius: "1rem", boxShadow: "0 25px 50px rgba(0,0,0,0.2)", width: "100%", maxWidth: "32rem", maxHeight: "90vh", overflowY: "auto" }}>
             <div style={{ padding: "1.5rem" }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1.25rem" }}>
-                <h2 style={{ fontSize: "1.1rem", fontWeight: 700, color: "#1f2937" }}>{editing ? "Edit Event" : "Create Event"}</h2>
-                <button onClick={resetForm} style={{ background: "none", border: "none", cursor: "pointer", color: "#9ca3af" }}>
+                <h2 style={{ fontSize: "1.1rem", fontWeight: 700, color: "#1e293b" }}>{editing ? "Edit Event" : "Create Event"}</h2>
+                <button onClick={resetForm} style={{ background: "none", border: "none", cursor: "pointer", color: "#94a3b8" }}>
                   <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                   </svg>
@@ -512,16 +502,29 @@ export default function EventsTab() {
                   </div>
                 </div>
                 
+                {/* Location Dropdown from Devices */}
                 <div>
                   <label style={labelStyle}>Location *</label>
-                  <input 
-                    type="text" 
-                    value={form.location} 
-                    onChange={e => setForm({ ...form, location: e.target.value })} 
-                    style={inputStyle} 
-                    placeholder="e.g., Conference Room A" 
-                    required 
-                  />
+                  <select
+                    value={form.location}
+                    onChange={e => setForm({ ...form, location: e.target.value })}
+                    style={inputStyle}
+                    required
+                  >
+                    <option value="">Select a location</option>
+                    <option value="All">Select all</option>
+                    {devices.map(device => (
+
+                      <option key={device.id} value={device.name}>
+                        {device.name} {device.status === "online" ? "🟢" : "⚪"}
+                      </option>
+                    ))}
+                  </select>
+                  {devices.length === 0 && (
+                    <p style={{ fontSize: "0.7rem", color: "#f59e0b", marginTop: "0.25rem" }}>
+                      ⚠️ No devices found. Please add devices first.
+                    </p>
+                  )}
                 </div>
                 
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1rem" }}>
@@ -544,44 +547,13 @@ export default function EventsTab() {
                       readOnly 
                       style={{ 
                         ...inputStyle, 
-                        background: "#f3f4f6", 
-                        color: "#4b5563", 
+                        background: "#f8fafc", 
+                        color: "#003366", 
                         cursor: "not-allowed",
                         fontWeight: 600
                       }} 
                     />
                   </div>
-                </div>
-
-                {/* Instructor Assignment */}
-                <div>
-                  <label style={labelStyle}>Assign to Instructor</label>
-                  <div style={{ display: "flex", alignItems: "center", gap: "1rem", marginBottom: "0.5rem" }}>
-                    <label style={{ display: "flex", alignItems: "center", gap: "0.5rem", fontSize: "0.875rem", cursor: "pointer" }}>
-                      <input 
-                        type="checkbox" 
-                        checked={form.for_all_instructors}
-                        onChange={e => setForm({ ...form, for_all_instructors: e.target.checked, instructor_id: "" })}
-                      />
-                      All Instructors (College-wide)
-                    </label>
-                  </div>
-                  
-                  {!form.for_all_instructors && (
-                    <select
-                      value={form.instructor_id}
-                      onChange={e => setForm({ ...form, instructor_id: e.target.value })}
-                      style={inputStyle}
-                    >
-                      <option value="">Select Specific Instructor</option>
-                      {instructors.map(i => (
-                        <option key={i.id} value={i.instructor_id}>{i.name}</option>
-                      ))}
-                    </select>
-                  )}
-                  <p style={{ fontSize: "0.65rem", color: "#6b7280", marginTop: "0.25rem" }}>
-                    Select an instructor or make it college-wide. This will mark their schedules as "Excused" during the event.
-                  </p>
                 </div>
                 
                 <div style={{ display: "flex", justifyContent: "flex-end", gap: "0.75rem", paddingTop: "0.5rem" }}>
@@ -590,13 +562,16 @@ export default function EventsTab() {
                     onClick={resetForm} 
                     style={{ 
                       padding: "0.5rem 1.25rem", 
-                      border: "1px solid #e5e7eb", 
+                      border: "1px solid #e2e8f0", 
                       borderRadius: "0.5rem", 
                       background: "none", 
                       fontSize: "0.875rem", 
                       cursor: "pointer", 
-                      color: "#6b7280" 
+                      color: "#64748b",
+                      transition: "background 0.2s"
                     }}
+                    onMouseEnter={e => (e.currentTarget.style.background = "#f8fafc")}
+                    onMouseLeave={e => (e.currentTarget.style.background = "none")}
                   >
                     Cancel
                   </button>
@@ -605,7 +580,7 @@ export default function EventsTab() {
                     disabled={loading}
                     style={{ 
                       padding: "0.5rem 1.25rem", 
-                      background: "#4f46e5", 
+                      background: "#003366", 
                       color: "#fff", 
                       border: "none", 
                       borderRadius: "0.5rem", 
@@ -615,8 +590,11 @@ export default function EventsTab() {
                       display: "flex", 
                       alignItems: "center", 
                       gap: "0.4rem", 
-                      opacity: loading ? 0.6 : 1 
+                      opacity: loading ? 0.6 : 1,
+                      transition: "background 0.2s"
                     }}
+                    onMouseEnter={e => { if (!loading) e.currentTarget.style.background = "#004c99"; }}
+                    onMouseLeave={e => { if (!loading) e.currentTarget.style.background = "#003366"; }}
                   >
                     {loading && <div style={{ width: "1rem", height: "1rem", border: "2px solid #fff", borderTopColor: "transparent", borderRadius: "50%", animation: "spin 0.7s linear infinite" }} />}
                     {editing ? "Update Event" : "Create Event"}

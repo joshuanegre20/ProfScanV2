@@ -1,0 +1,150 @@
+services:
+
+  # ── MySQL ──────────────────────────────────────────────────────
+  db:
+    image: mysql:8.0
+    container_name: profscan_db
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:-root}
+      MYSQL_DATABASE:      ${DB_DATABASE:-profscan}
+      MYSQL_USER:          ${DB_USERNAME:-profscan}
+      MYSQL_PASSWORD:      ${DB_PASSWORD:-secret}
+    volumes:
+      - db_data:/var/lib/mysql
+    networks:
+      - profscan
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ── Laravel ───────────────────────────────────────────────────
+  backend:
+    build:
+      context: .
+      dockerfile: docker/php/Dockerfile
+    container_name: profscan_backend
+    restart: unless-stopped
+    working_dir: /var/www
+    command: php artisan serve --host=0.0.0.0 --port=8000
+    ports:
+      - "0.0.0.0:8000:8000"
+    volumes:
+      - ./laravel-backend:/var/www
+    environment:
+      APP_ENV:       ${APP_ENV:-production}
+      APP_DEBUG:     ${APP_DEBUG:-false}
+      APP_KEY:       ${APP_KEY}
+      APP_URL:       ${APP_URL:-http://localhost:8000}
+      DB_CONNECTION: mysql
+      DB_HOST:       db
+      DB_PORT:       3306
+      DB_DATABASE:   ${DB_DATABASE:-profscan_db}
+      DB_USERNAME:   ${DB_USERNAME:-profscan}
+      DB_PASSWORD:   ${DB_PASSWORD:-secret}
+      SOCKET_URL:    http://socket:3001
+      TZ:            Asia/Manila
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - profscan
+
+  # ── Laravel Scheduler ─────────────────────────────────────────
+  scheduler:
+    build:
+      context: .
+      dockerfile: docker/php/Dockerfile
+    container_name: profscan_scheduler
+    restart: unless-stopped
+    working_dir: /var/www
+    command: php artisan schedule:work
+    volumes:
+      - ./laravel-backend:/var/www
+    environment:
+      APP_ENV:       ${APP_ENV:-production}
+      APP_KEY:       ${APP_KEY}
+      DB_CONNECTION: mysql
+      DB_HOST:       db
+      DB_PORT:       3306
+      DB_DATABASE:   ${DB_DATABASE:-profscan_db}
+      DB_USERNAME:   ${DB_USERNAME:-profscan}
+      DB_PASSWORD:   ${DB_PASSWORD:-secret}
+      SOCKET_URL:    http://socket:3001
+      TZ:            Asia/Manila
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - profscan
+
+  # ── Socket.io ─────────────────────────────────────────────────
+  socket:
+    build:
+      context: ./web-socket
+    container_name: profscan_socket
+    restart: unless-stopped
+    ports:
+      - "0.0.0.0:3001:3001"
+    networks:
+      - profscan
+
+  # ── React Frontend (dev mode with hot reload) ─────────────────
+  frontend:
+    build:
+      context: ./frontend-react
+    container_name: profscan_frontend
+    command: npm run dev -- --host 0.0.0.0 --port 5173
+    ports:
+      - "5173:5173"
+    volumes:
+      - ./frontend-react:/app
+      - /app/node_modules
+    environment:
+      VITE_API_URL:    http://192.168.0.101:8000
+      VITE_SOCKET_URL: http://192.168.0.101:3001
+    networks:
+      - profscan
+
+  # ── Nginx ─────────────────────────────────────────────────────
+  nginx:
+    image: nginx:alpine
+    container_name: profscan_nginx
+    restart: unless-stopped
+    ports:
+      - "0.0.0.0:80:80"
+    volumes:
+      - ./docker/nginx/default.conf:/etc/nginx/conf.d/default.conf
+    depends_on:
+      - backend
+      - socket
+      - frontend
+    networks:
+      - profscan
+
+  # ── phpMyAdmin ────────────────────────────────────────────────
+  phpmyadmin:
+    image: phpmyadmin:latest
+    container_name: profscan_phpmyadmin
+    restart: unless-stopped
+    ports:
+      - "8080:80"
+    environment:
+      PMA_HOST:     db
+      PMA_PORT:     3306
+      PMA_USER:     root
+      PMA_PASSWORD: ${DB_ROOT_PASSWORD:-root}
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - profscan
+
+volumes:
+  db_data:
+
+networks:
+  profscan:
+    driver: bridge

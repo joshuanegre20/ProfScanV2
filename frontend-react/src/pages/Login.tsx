@@ -10,15 +10,49 @@ export default function Login() {
   const [errors, setErrors] = useState<string | null>(null);
   const [processing, setProcessing] = useState(false);
   const [logoUrl, setLogoUrl] = useState<string | null>(null);
+  const [dominantColor, setDominantColor] = useState<string>("#003366");
+  const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
 
   const navigate = useNavigate();
 
   useEffect(() => {
-    axios
-      .get("http://127.0.0.1:8000/api/logo", { responseType: "blob" })
+    const handleResize = () => setIsMobile(window.innerWidth < 768);
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, []);
+
+  useEffect(() => {
+    axios.get(`${import.meta.env.VITE_API_URL ?? "http://127.0.0.1:8000"}/api/logo`, { responseType: "blob" })
       .then((res) => {
         const url = URL.createObjectURL(res.data);
         setLogoUrl(url);
+
+        const img = new Image();
+        img.crossOrigin = "Anonymous";
+        img.onload = () => {
+          const canvas = document.createElement("canvas");
+          const ctx = canvas.getContext("2d");
+          canvas.width = img.width;
+          canvas.height = img.height;
+          ctx?.drawImage(img, 0, 0);
+
+          const imageData = ctx?.getImageData(0, 0, canvas.width, canvas.height);
+          if (imageData) {
+            let r = 0, g = 0, b = 0;
+            const data = imageData.data;
+            for (let i = 0; i < data.length; i += 4) {
+              r += data[i];
+              g += data[i + 1];
+              b += data[i + 2];
+            }
+            const pixelCount = data.length / 4;
+            r = Math.floor(r / pixelCount);
+            g = Math.floor(g / pixelCount);
+            b = Math.floor(b / pixelCount);
+            setDominantColor(`rgb(${r}, ${g}, ${b})`);
+          }
+        };
+        img.src = url;
       })
       .catch(() => {});
   }, []);
@@ -31,15 +65,18 @@ export default function Login() {
     try {
       const response = await api.post("/login", { email, password });
 
-localStorage.setItem("token", response.data.token);
-localStorage.setItem("role", response.data.role); // ← save role too
+      localStorage.setItem("token", response.data.token);
+      localStorage.setItem("role",  response.data.role);
+      localStorage.setItem("name",  response.data.name ?? "");
+      localStorage.setItem("email", response.data.email ?? "");
+      localStorage.setItem("instructor_id", response.data.instructor_id ?? "");
+      localStorage.setItem("staff_id",      response.data.staff_id ?? "");
 
-// redirect based on role
-const role = response.data.role;
-if (role === "admin")        navigate("/admin/dashboard");
-else if (role === "staff")   navigate("/staff/dashboard");
-else if (role === "instructor") navigate("/instructor/dashboard");
-else navigate("/");
+      const role = response.data.role;
+      if (role === "admin")           navigate("/admin/dashboard");
+      else if (role === "staff")      navigate("/staff/dashboard");
+      else if (role === "instructor") navigate("/instructor/dashboard");
+      else navigate("/");
     } catch (err: any) {
       if (err.response?.data?.message) {
         setErrors(err.response.data.message);
@@ -56,151 +93,404 @@ else navigate("/");
       style={{
         minHeight: "100vh",
         width: "100%",
-        background: "linear-gradient(to bottom, #1e3a8a, #312e81, #000)",
+        position: "relative",
+        background: `linear-gradient(135deg, ${dominantColor} 0%, ${dominantColor}CC 50%, ${dominantColor}99 100%)`,
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
-        paddingLeft: "1.5rem",
-        paddingRight: "1.5rem",
+        padding: isMobile ? "1rem" : "1.5rem",
         boxSizing: "border-box",
-        color: "#fff",
-        fontFamily: "ui-sans-serif, system-ui, sans-serif",
+        fontFamily: "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
       }}
     >
-      {/* Login Card */}
+      {/* Subtle Pattern Overlay */}
+      <div
+        style={{
+          position: "absolute",
+          top: 0, left: 0, right: 0, bottom: 0,
+          backgroundImage: `radial-gradient(circle at 20% 40%, rgba(255,255,255,0.08) 0%, transparent 50%),
+                            radial-gradient(circle at 80% 70%, rgba(255,215,0,0.08) 0%, transparent 50%)`,
+          pointerEvents: "none",
+        }}
+      />
+
+      {/* Background seal */}
+      {logoUrl && (
+        <div
+          style={{
+            position: "absolute",
+            bottom: "2rem",
+            right: "2rem",
+            width: "120px",
+            height: "120px",
+            opacity: 0.12,
+            pointerEvents: "none",
+            zIndex: 0,
+          }}
+        >
+          <img
+            src={logoUrl}
+            alt="College Seal"
+            style={{ width: "100%", height: "100%", objectFit: "contain", filter: "brightness(0) invert(1)" }}
+          />
+        </div>
+      )}
+
+      {/* Card */}
       <div
         style={{
           width: "100%",
-          maxWidth: "28rem",
-          background: "rgba(255, 255, 255, 0.1)",
-          backdropFilter: "blur(16px)",
-          WebkitBackdropFilter: "blur(16px)",
-          borderRadius: "1rem",
-          boxShadow: "0 25px 50px -12px rgba(0,0,0,0.5)",
-          padding: "2rem",
+          maxWidth: isMobile ? "440px" : "1100px",
+          background: "#ffffff",
+          borderRadius: isMobile ? "20px" : "24px",
+          boxShadow: "0 25px 50px -12px rgba(0,0,0,0.25)",
+          display: "flex",
+          flexDirection: isMobile ? "column" : "row",
+          overflow: "hidden",
+          zIndex: 1,
+          position: "relative",
         }}
       >
-        {/* Logo */}
-        <div style={{ textAlign: "center", marginBottom: "1.5rem" }}>
-          {logoUrl ? (
-            <img
-              src={logoUrl}
-              alt="Trinidad Municipal College"
-              style={{ width: "5rem", display: "block", margin: "0 auto 0.75rem auto" }}
-            />
-          ) : (
-            <div
-              style={{
-                width: "5rem",
-                height: "5rem",
-                borderRadius: "50%",
-                background: "rgba(255,255,255,0.1)",
-                margin: "0 auto 0.75rem auto",
-              }}
-            />
+        {/* ── Branding panel ── */}
+        <div
+          style={{
+            flex: isMobile ? "none" : 1,
+            background: `linear-gradient(135deg, ${dominantColor} 0%, ${dominantColor}DD 100%)`,
+            padding: isMobile ? "2rem 1.75rem 1.5rem" : "3rem",
+            display: "flex",
+            flexDirection: isMobile ? "row" : "column",
+            alignItems: isMobile ? "center" : "flex-start",
+            justifyContent: isMobile ? "flex-start" : "center",
+            gap: isMobile ? "1rem" : "0",
+            color: "#ffffff",
+            position: "relative",
+            overflow: "hidden",
+          }}
+        >
+          {/* Decorative bottom fade */}
+          <div
+            style={{
+              position: "absolute",
+              bottom: 0, left: 0, right: 0,
+              height: "100px",
+              background: "linear-gradient(to top, rgba(255,255,255,0.05), transparent)",
+              pointerEvents: "none",
+            }}
+          />
+
+          {/* Logo */}
+          {logoUrl && (
+            <div style={{ position: "relative", flexShrink: 0 }}>
+              <div
+                style={{
+                  position: "absolute",
+                  inset: "-10px",
+                  borderRadius: "50%",
+                  background: `radial-gradient(circle, ${dominantColor}40 0%, transparent 70%)`,
+                }}
+              />
+              <img
+                src={logoUrl}
+                alt="Trinidad Municipal College"
+                style={{
+                  width: isMobile ? "60px" : "90px",
+                  height: isMobile ? "60px" : "90px",
+                  borderRadius: "50%",
+                  background: "#ffffff",
+                  padding: "4px",
+                  position: "relative",
+                  display: "block",
+                  marginBottom: isMobile ? "0" : "1.5rem",
+                }}
+              />
+            </div>
           )}
-          <h2 style={{ fontSize: "1.25rem", fontWeight: 600 }}>
-            Trinidad Municipal College
-          </h2>
-          <p style={{ fontSize: "0.875rem", fontStyle: "italic", color: "#bfdbfe", marginTop: "0.25rem" }}>
-            A Tradition of Excellence
-          </p>
+
+          {/* Text block */}
+          <div style={{ flex: 1 }}>
+            <h1
+              style={{
+                fontSize: isMobile ? "1.1rem" : "2rem",
+                fontWeight: 600,
+                marginBottom: isMobile ? "0.2rem" : "0.75rem",
+                lineHeight: 1.2,
+                letterSpacing: "-0.02em",
+              }}
+            >
+              Trinidad Municipal College
+            </h1>
+
+            <p
+              style={{
+                fontSize: isMobile ? "0.75rem" : "1rem",
+                color: "rgba(255,255,255,0.95)",
+                fontStyle: "italic",
+                borderLeft: "3px solid #ffd700",
+                paddingLeft: "0.75rem",
+                margin: 0,
+              }}
+            >
+              A Tradition of Excellence
+            </p>
+
+            {/* Hide description & footer on mobile to keep branding bar compact */}
+            {!isMobile && (
+              <>
+                <p
+                  style={{
+                    fontSize: "0.875rem",
+                    color: "rgba(255,255,255,0.85)",
+                    marginTop: "2rem",
+                    lineHeight: 1.6,
+                  }}
+                >
+                  Access the ProfScan system to manage student attendance,<br />
+                  track academic progress, and streamline classroom<br />
+                  management with our comprehensive platform.
+                </p>
+                <div
+                  style={{
+                    marginTop: "2rem",
+                    paddingTop: "1.5rem",
+                    borderTop: "1px solid rgba(255,255,255,0.2)",
+                  }}
+                >
+                  <p style={{ fontSize: "0.75rem", color: "rgba(255,255,255,0.7)" }}>
+                    © {new Date().getFullYear()} Trinidad Municipal College
+                  </p>
+                </div>
+              </>
+            )}
+          </div>
         </div>
 
-        {/* Title */}
-        <h1 style={{ fontSize: "1.5rem", fontWeight: 700, textAlign: "center", marginBottom: "1.5rem" }}>
-          ProfScan Login
-        </h1>
-
-        {/* Error Message */}
-        {errors && (
-          <p style={{ color: "#f87171", fontSize: "0.875rem", textAlign: "center", marginBottom: "1rem" }}>
-            {errors}
-          </p>
-        )}
-
-        {/* Login Form */}
-        <form onSubmit={submit} style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
-          <div>
-            <label style={{ display: "block", fontSize: "0.875rem", marginBottom: "0.25rem" }}>
-              Email
-            </label>
-            <input
-              type="email"
-              placeholder="example@tmc.edu.ph"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              required
+        {/* ── Form panel ── */}
+        <div
+          style={{
+            flex: isMobile ? "none" : 1,
+            padding: isMobile ? "1.75rem" : "3rem",
+            background: "#ffffff",
+          }}
+        >
+          <div style={{ marginBottom: "1.5rem" }}>
+            <h2
               style={{
-                width: "100%",
-                padding: "0.5rem 1rem",
-                borderRadius: "0.5rem",
-                background: "rgba(255,255,255,0.2)",
-                border: "1px solid rgba(255,255,255,0.2)",
-                color: "#fff",
-                fontSize: "1rem",
-                outline: "none",
-                boxSizing: "border-box",
+                fontSize: isMobile ? "1.375rem" : "1.75rem",
+                fontWeight: 600,
+                color: "#1e293b",
+                marginBottom: "0.4rem",
+                letterSpacing: "-0.01em",
               }}
-              onFocus={e => (e.currentTarget.style.boxShadow = "0 0 0 2px #60a5fa")}
-              onBlur={e => (e.currentTarget.style.boxShadow = "none")}
-            />
+            >
+              Welcome Back
+            </h2>
+            <p style={{ fontSize: "0.875rem", color: "#64748b" }}>
+              Sign in to access your faculty dashboard
+            </p>
           </div>
 
-          <div>
-            <label style={{ display: "block", fontSize: "0.875rem", marginBottom: "0.25rem" }}>
-              Password
-            </label>
-            <input
-              type="password"
-              placeholder="••••••••"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              required
+          {/* Error */}
+          {errors && (
+            <div
+              style={{
+                background: "#fef2f2",
+                borderLeft: `4px solid ${dominantColor}`,
+                padding: "0.875rem",
+                borderRadius: "8px",
+                marginBottom: "1.25rem",
+              }}
+            >
+              <p style={{ color: "#991b1b", fontSize: "0.875rem", margin: 0 }}>{errors}</p>
+            </div>
+          )}
+
+          {/* Form */}
+          <form onSubmit={submit} style={{ display: "flex", flexDirection: "column", gap: "1.125rem" }}>
+            <div>
+              <label
+                style={{
+                  display: "block",
+                  fontSize: "0.875rem",
+                  fontWeight: 500,
+                  marginBottom: "0.5rem",
+                  color: "#334155",
+                }}
+              >
+                Email Address
+              </label>
+              <input
+                type="email"
+                placeholder="professor@tmc.edu.ph"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                required
+                style={{
+                  width: "100%",
+                  padding: "0.75rem 1rem",
+                  borderRadius: "10px",
+                  background: "#f8fafc",
+                  border: "1px solid #e2e8f0",
+                  color: "#1e293b",
+                  fontSize: "0.9375rem",
+                  outline: "none",
+                  boxSizing: "border-box",
+                  transition: "all 0.2s ease",
+                  fontFamily: "inherit",
+                }}
+                onFocus={(e) => {
+                  e.currentTarget.style.borderColor = dominantColor;
+                  e.currentTarget.style.boxShadow = `0 0 0 3px ${dominantColor}20`;
+                  e.currentTarget.style.background = "#ffffff";
+                }}
+                onBlur={(e) => {
+                  e.currentTarget.style.borderColor = "#e2e8f0";
+                  e.currentTarget.style.boxShadow = "none";
+                  e.currentTarget.style.background = "#f8fafc";
+                }}
+              />
+            </div>
+
+            <div>
+              <label
+                style={{
+                  display: "block",
+                  fontSize: "0.875rem",
+                  fontWeight: 500,
+                  marginBottom: "0.5rem",
+                  color: "#334155",
+                }}
+              >
+                Password
+              </label>
+              <input
+                type="password"
+                placeholder="••••••••"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                required
+                style={{
+                  width: "100%",
+                  padding: "0.75rem 1rem",
+                  borderRadius: "10px",
+                  background: "#f8fafc",
+                  border: "1px solid #e2e8f0",
+                  color: "#1e293b",
+                  fontSize: "0.9375rem",
+                  outline: "none",
+                  boxSizing: "border-box",
+                  transition: "all 0.2s ease",
+                  fontFamily: "inherit",
+                }}
+                onFocus={(e) => {
+                  e.currentTarget.style.borderColor = dominantColor;
+                  e.currentTarget.style.boxShadow = `0 0 0 3px ${dominantColor}20`;
+                  e.currentTarget.style.background = "#ffffff";
+                }}
+                onBlur={(e) => {
+                  e.currentTarget.style.borderColor = "#e2e8f0";
+                  e.currentTarget.style.boxShadow = "none";
+                  e.currentTarget.style.background = "#f8fafc";
+                }}
+              />
+            </div>
+
+            <div style={{ display: "flex", justifyContent: "flex-end", marginTop: "-0.375rem" }}>
+              <a
+                href="#"
+                style={{ fontSize: "0.75rem", color: dominantColor, textDecoration: "none", fontWeight: 500 }}
+                onMouseEnter={(e) => (e.currentTarget.style.textDecoration = "underline")}
+                onMouseLeave={(e) => (e.currentTarget.style.textDecoration = "none")}
+              >
+                Forgot password?
+              </a>
+            </div>
+
+            <button
+              type="submit"
+              disabled={processing}
               style={{
                 width: "100%",
-                padding: "0.5rem 1rem",
-                borderRadius: "0.5rem",
-                background: "rgba(255,255,255,0.2)",
-                border: "1px solid rgba(255,255,255,0.2)",
-                color: "#fff",
-                fontSize: "1rem",
-                outline: "none",
-                boxSizing: "border-box",
+                background: dominantColor,
+                color: "#ffffff",
+                border: "none",
+                padding: "0.875rem",
+                borderRadius: "10px",
+                fontWeight: 600,
+                fontSize: "0.9375rem",
+                cursor: processing ? "not-allowed" : "pointer",
+                opacity: processing ? 0.6 : 1,
+                transition: "all 0.2s ease",
+                marginTop: "0.25rem",
+                fontFamily: "inherit",
               }}
-              onFocus={e => (e.currentTarget.style.boxShadow = "0 0 0 2px #60a5fa")}
-              onBlur={e => (e.currentTarget.style.boxShadow = "none")}
-            />
-          </div>
+              onMouseEnter={(e) => {
+                if (!processing) {
+                  e.currentTarget.style.background = `${dominantColor}DD`;
+                  e.currentTarget.style.transform = "translateY(-1px)";
+                  e.currentTarget.style.boxShadow = `0 4px 12px ${dominantColor}40`;
+                }
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = dominantColor;
+                e.currentTarget.style.transform = "translateY(0)";
+                e.currentTarget.style.boxShadow = "none";
+              }}
+            >
+              {processing ? (
+                <span style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: "0.5rem" }}>
+                  <span
+                    style={{
+                      display: "inline-block",
+                      width: "16px",
+                      height: "16px",
+                      border: "2px solid #ffffff",
+                      borderTopColor: "transparent",
+                      borderRadius: "50%",
+                      animation: "spin 0.6s linear infinite",
+                    }}
+                  />
+                  Signing in...
+                </span>
+              ) : (
+                "Sign In"
+              )}
+            </button>
+          </form>
 
-          <button
-            type="submit"
-            disabled={processing}
-            onMouseEnter={e => !processing && (e.currentTarget.style.background = "#1d4ed8")}
-            onMouseLeave={e => (e.currentTarget.style.background = "#2563eb")}
+          {/* Footer */}
+          <div
             style={{
-              width: "100%",
-              background: "#2563eb",
-              color: "#fff",
-              border: "none",
-              padding: "0.625rem",
-              borderRadius: "0.5rem",
-              fontWeight: 600,
-              fontSize: "1rem",
-              cursor: processing ? "not-allowed" : "pointer",
-              opacity: processing ? 0.5 : 1,
-              transition: "background 0.2s ease",
+              marginTop: "1.75rem",
+              paddingTop: "1.25rem",
+              borderTop: "1px solid #e2e8f0",
+              textAlign: "center",
             }}
           >
-            {processing ? "Logging in..." : "Login"}
-          </button>
-        </form>
-
-        {/* Footer */}
-        <p style={{ textAlign: "center", fontSize: "0.875rem", color: "#93c5fd", marginTop: "1.5rem" }}>
-          © {new Date().getFullYear()} Trinidad Municipal College
-        </p>
+            {isMobile && (
+              <p style={{ fontSize: "0.7rem", color: "rgba(100,116,139,0.7)", marginBottom: "0.5rem" }}>
+                © {new Date().getFullYear()} Trinidad Municipal College
+              </p>
+            )}
+            <p style={{ fontSize: "0.75rem", color: "#64748b", margin: 0 }}>
+              Need help? Contact IT Support at{" "}
+              <a
+                href="mailto:it@tmc.edu.ph"
+                style={{ color: dominantColor, textDecoration: "none", fontWeight: 500 }}
+                onMouseEnter={(e) => (e.currentTarget.style.textDecoration = "underline")}
+                onMouseLeave={(e) => (e.currentTarget.style.textDecoration = "none")}
+              >
+                it@tmc.edu.ph
+              </a>
+            </p>
+          </div>
+        </div>
       </div>
+
+      <style>{`
+        @keyframes spin {
+          to { transform: rotate(360deg); }
+        }
+      `}</style>
     </div>
   );
 }

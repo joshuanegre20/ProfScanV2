@@ -1,16 +1,25 @@
 // src/pages/Admin/tabs/AddStaffTab.tsx
-import React, { useState, useRef } from "react";
+import React, { useState } from "react";
 import api from "../../../api/axios";
 
+const glassCardStyle = {
+  background: "#fff",
+  borderRadius: "1rem",
+  boxShadow: "0 1px 3px rgba(0,0,0,0.08)",
+  border: "1px solid #e2e8f0",
+  overflow: "hidden",
+};
+
 const inputStyle: React.CSSProperties = {
-  width: "100%", padding: "0.625rem 1rem", border: "1px solid #e5e7eb",
-  borderRadius: "0.5rem", fontSize: "0.875rem", color: "#1f2937",
+  width: "100%", padding: "0.625rem 1rem", border: "1px solid #e2e8f0",
+  borderRadius: "0.5rem", fontSize: "0.875rem", color: "#1e293b",
   outline: "none", boxSizing: "border-box", fontFamily: "inherit",
   transition: "border-color 0.15s, box-shadow 0.15s",
+  background: "#fff",
 };
 
 const labelStyle: React.CSSProperties = {
-  display: "block", fontSize: "0.7rem", fontWeight: 600, color: "#6b7280",
+  display: "block", fontSize: "0.7rem", fontWeight: 600, color: "#64748b",
   textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: "0.375rem",
 };
 
@@ -24,12 +33,12 @@ const defaultForm = {
 };
 
 export default function AddStaffTab() {
-  const [form, setForm]               = useState(defaultForm);
-  const [photo, setPhoto]             = useState("/images/default-avatar.png");
+  const [form, setForm] = useState(defaultForm);
+  const [photo, setPhoto] = useState("/images/default-avatar.png");
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
-  const [errors, setErrors]           = useState<Record<string, string>>({});
-  const [processing, setProcessing]   = useState(false);
-  const [success, setSuccess]         = useState<{ name: string; email: string } | null>(null);
+  const [errors, setErrors] = useState<Record<string, string>>({});
+  const [processing, setProcessing] = useState(false);
+  const [success, setSuccess] = useState<{ name: string; email: string } | null>(null);
 
   const set = (key: string, value: string) => setForm(p => ({ ...p, [key]: value }));
 
@@ -74,25 +83,24 @@ export default function AddStaffTab() {
     }
   };
 
-  // ── Success Screen ─────────────────────────────────────────────
   if (success) {
     return (
       <div style={{ display: "flex", alignItems: "center", justifyContent: "center", minHeight: "60vh" }}>
-        <div style={{ background: "#fff", borderRadius: "1rem", boxShadow: "0 20px 40px rgba(0,0,0,0.12)", border: "1px solid #f3f4f6", padding: "2.5rem", maxWidth: "420px", width: "100%", textAlign: "center" }}>
-          <div style={{ width: "3.5rem", height: "3.5rem", background: "#fee2e2", borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 1rem" }}>
-            <svg width="24" height="24" fill="none" stroke="#dc2626" viewBox="0 0 24 24">
+        <div style={{ ...glassCardStyle, padding: "2.5rem", maxWidth: "420px", width: "100%", textAlign: "center" }}>
+          <div style={{ width: "3.5rem", height: "3.5rem", background: "#dcfce7", borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 1rem" }}>
+            <svg width="24" height="24" fill="none" stroke="#15803d" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
             </svg>
           </div>
-          <h2 style={{ fontSize: "1.125rem", fontWeight: 700, color: "#1f2937", marginBottom: "0.25rem" }}>Staff Added!</h2>
-          <p style={{ fontSize: "0.875rem", color: "#6b7280", marginBottom: "1.5rem" }}>
+          <h2 style={{ fontSize: "1.125rem", fontWeight: 700, color: "#1e293b", marginBottom: "0.25rem" }}>Staff Added!</h2>
+          <p style={{ fontSize: "0.875rem", color: "#64748b", marginBottom: "1.5rem" }}>
             <strong>{success.name}</strong> has been registered successfully.
           </p>
-          <p style={{ fontSize: "0.8rem", color: "#9ca3af", marginBottom: "1.5rem" }}>{success.email}</p>
+          <p style={{ fontSize: "0.8rem", color: "#94a3b8", marginBottom: "1.5rem" }}>{success.email}</p>
           <button onClick={() => setSuccess(null)}
-            style={{ padding: "0.625rem 1.5rem", background: "#dc2626", color: "#fff", border: "none", borderRadius: "0.5rem", fontSize: "0.875rem", fontWeight: 600, cursor: "pointer" }}
-            onMouseEnter={e => (e.currentTarget.style.background = "#b91c1c")}
-            onMouseLeave={e => (e.currentTarget.style.background = "#dc2626")}>
+            style={{ padding: "0.625rem 1.5rem", background: "#003366", color: "#fff", border: "none", borderRadius: "0.5rem", fontSize: "0.875rem", fontWeight: 600, cursor: "pointer", transition: "background 0.2s" }}
+            onMouseEnter={e => (e.currentTarget.style.background = "#004c99")}
+            onMouseLeave={e => (e.currentTarget.style.background = "#003366")}>
             Add Another
           </button>
         </div>
@@ -100,36 +108,36 @@ export default function AddStaffTab() {
     );
   }
 
-  // ── Form ───────────────────────────────────────────────────────
   return (
     <div style={{ fontFamily: "ui-sans-serif, system-ui, sans-serif" }}>
 
       {/* Header */}
-      <div style={{ background: "linear-gradient(135deg, #7f1d1d, #dc2626)", color: "#fff", borderRadius: "0.75rem", padding: "1.5rem 2rem", marginBottom: "1.5rem", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+      <div style={{ background: "linear-gradient(135deg, #003366, #0055a4)", color: "#fff", borderRadius: "0.75rem", padding: "1.5rem 2rem", marginBottom: "1.5rem", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
         <div style={{ display: "flex", flexDirection: "column", alignItems: "center", flex: 1, gap: "0.5rem", textAlign: "center" }}>
-          <img src="/images/tmclogo2.png" alt="TMC" style={{ width: "3rem", height: "3rem", objectFit: "contain" }} onError={e => (e.currentTarget.style.display = "none")} />
+          <div style={{ width: "3rem", height: "3rem", borderRadius: "50%", background: "rgba(255,255,255,0.2)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "1.5rem" }}>
+            👥
+          </div>
           <div>
             <h1 style={{ fontSize: "1.25rem", fontWeight: 700 }}>Admin Portal</h1>
-            <p style={{ color: "#fecaca", fontSize: "0.8rem" }}>Add New Staff Member</p>
+            <p style={{ color: "#bfdbfe", fontSize: "0.8rem" }}>Add New Staff Member</p>
           </div>
         </div>
-        
       </div>
 
       {/* Form Card */}
-      <div style={{ background: "#fff", borderRadius: "1rem", boxShadow: "0 1px 3px rgba(0,0,0,0.08)", border: "1px solid #f3f4f6", overflow: "hidden" }}>
+      <div style={glassCardStyle}>
 
         {/* Avatar Header */}
-        <div style={{ padding: "1.5rem 2rem", borderBottom: "1px solid #f3f4f6", display: "flex", alignItems: "center", gap: "1.5rem" }}>
+        <div style={{ padding: "1.5rem 2rem", borderBottom: "1px solid #e2e8f0", display: "flex", alignItems: "center", gap: "1.5rem" }}>
           <div style={{ position: "relative", flexShrink: 0 }}>
-            <div style={{ width: "6rem", height: "6rem", borderRadius: "50%", overflow: "hidden", border: "4px solid #fee2e2", boxShadow: "0 2px 8px rgba(0,0,0,0.1)" }}>
+            <div style={{ width: "6rem", height: "6rem", borderRadius: "50%", overflow: "hidden", boxShadow: "0 2px 8px rgba(0,0,0,0.1)" }}>
               <img src={photo} alt="Profile" style={{ width: "100%", height: "100%", objectFit: "cover" }}
                 onError={() => setPhoto("/images/default-avatar.png")} />
             </div>
             <label
-              style={{ position: "absolute", bottom: "-2px", right: "-2px", background: "#dc2626", color: "#fff", padding: "0.375rem", borderRadius: "50%", cursor: "pointer", boxShadow: "0 2px 6px rgba(0,0,0,0.2)" }}
-              onMouseEnter={e => (e.currentTarget.style.background = "#b91c1c")}
-              onMouseLeave={e => (e.currentTarget.style.background = "#dc2626")}>
+              style={{ position: "absolute", bottom: "-2px", right: "-2px", background: "#003366", color: "#fff", padding: "0.375rem", borderRadius: "50%", cursor: "pointer", boxShadow: "0 2px 6px rgba(0,0,0,0.2)", transition: "background 0.2s" }}
+              onMouseEnter={e => (e.currentTarget.style.background = "#004c99")}
+              onMouseLeave={e => (e.currentTarget.style.background = "#003366")}>
               <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
               </svg>
@@ -137,9 +145,9 @@ export default function AddStaffTab() {
             </label>
           </div>
           <div>
-            <h2 style={{ fontSize: "1rem", fontWeight: 700, color: "#1f2937" }}>Staff Information</h2>
-            <p style={{ fontSize: "0.8rem", color: "#9ca3af", marginTop: "0.125rem" }}>Fill in the details to create a new staff account</p>
-            {selectedFile && <p style={{ fontSize: "0.75rem", color: "#16a34a", marginTop: "0.25rem" }}>✓ {selectedFile.name}</p>}
+            <h2 style={{ fontSize: "1rem", fontWeight: 700, color: "#1e293b" }}>Staff Information</h2>
+            <p style={{ fontSize: "0.8rem", color: "#64748b", marginTop: "0.125rem" }}>Fill in the details to create a new staff account</p>
+            {selectedFile && <p style={{ fontSize: "0.75rem", color: "#22c55e", marginTop: "0.25rem" }}>✓ {selectedFile.name}</p>}
           </div>
         </div>
 
@@ -148,14 +156,14 @@ export default function AddStaffTab() {
 
           {/* Account Details */}
           <section>
-            <h3 style={{ fontSize: "0.7rem", fontWeight: 700, color: "#dc2626", textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: "1rem" }}>Account Details</h3>
+            <h3 style={{ fontSize: "0.7rem", fontWeight: 700, color: "#003366", textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: "1rem" }}>Account Details</h3>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: "1.25rem" }}>
               {[
-                { key: "name",                  label: "Full Name *",          placeholder: "John Doe",        required: true },
-                { key: "email",                 label: "Email Address *",      placeholder: "john@tmc.edu.ph", type: "email", required: true },
-                { key: "contact_no",            label: "Contact Number",       placeholder: "09XX-XXX-XXXX" },
-                { key: "password",              label: "Temporary Password *", placeholder: "••••••••",        type: "password", required: true },
-                { key: "password_confirmation", label: "Confirm Password *",   placeholder: "••••••••",        type: "password", required: true },
+                { key: "name", label: "Full Name *", placeholder: "John Doe", required: true },
+                { key: "email", label: "Email Address *", placeholder: "john@tmc.edu.ph", type: "email", required: true },
+                { key: "contact_no", label: "Contact Number", placeholder: "09XX-XXX-XXXX" },
+                { key: "password", label: "Temporary Password *", placeholder: "••••••••", type: "password", required: true },
+                { key: "password_confirmation", label: "Confirm Password *", placeholder: "••••••••", type: "password", required: true },
               ].map(field => (
                 <div key={field.key}>
                   <label style={labelStyle}>{field.label}</label>
@@ -166,7 +174,7 @@ export default function AddStaffTab() {
                     placeholder={field.placeholder}
                     required={field.required}
                     style={inputStyle}
-                    onFocus={e => (e.currentTarget.style.boxShadow = "0 0 0 3px rgba(220,38,38,0.15)")}
+                    onFocus={e => (e.currentTarget.style.boxShadow = "0 0 0 3px rgba(0,51,102,0.15)")}
                     onBlur={e => (e.currentTarget.style.boxShadow = "none")}
                   />
                   {errors[field.key] && <p style={errorStyle}>{errors[field.key]}</p>}
@@ -175,34 +183,29 @@ export default function AddStaffTab() {
             </div>
           </section>
 
-          <hr style={{ border: "none", borderTop: "1px solid #f3f4f6" }} />
+          <hr style={{ border: "none", borderTop: "1px solid #e2e8f0" }} />
 
           {/* Personal Info */}
           <section>
-            <h3 style={{ fontSize: "0.7rem", fontWeight: 700, color: "#dc2626", textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: "1rem" }}>Personal Information</h3>
+            <h3 style={{ fontSize: "0.7rem", fontWeight: 700, color: "#003366", textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: "1rem" }}>Personal Information</h3>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: "1.25rem" }}>
               <div>
                 <label style={labelStyle}>Age</label>
-                <input type="number" value={form.age} onChange={e => set("age", e.target.value)}
-                  placeholder="Enter age" style={inputStyle}
-                  onFocus={e => (e.currentTarget.style.boxShadow = "0 0 0 3px rgba(220,38,38,0.15)")}
-                  onBlur={e => (e.currentTarget.style.boxShadow = "none")} />
+                <input type="number" value={form.age} onChange={e => set("age", e.target.value)} placeholder="Enter age" style={inputStyle} />
                 {errors.age && <p style={errorStyle}>{errors.age}</p>}
               </div>
               <div>
                 <label style={labelStyle}>Birth Date</label>
-                <input type="date" value={form.birth_date} onChange={e => set("birth_date", e.target.value)} style={inputStyle}
-                  onFocus={e => (e.currentTarget.style.boxShadow = "0 0 0 3px rgba(220,38,38,0.15)")}
-                  onBlur={e => (e.currentTarget.style.boxShadow = "none")} />
+                <input type="date" value={form.birth_date} onChange={e => set("birth_date", e.target.value)} style={inputStyle} />
                 {errors.birth_date && <p style={errorStyle}>{errors.birth_date}</p>}
               </div>
               <div>
                 <label style={labelStyle}>Gender</label>
                 <div style={{ display: "flex", gap: "1.5rem", marginTop: "0.5rem" }}>
                   {["Male", "Female"].map(g => (
-                    <label key={g} style={{ display: "flex", alignItems: "center", gap: "0.5rem", fontSize: "0.875rem", color: "#374151", cursor: "pointer" }}>
+                    <label key={g} style={{ display: "flex", alignItems: "center", gap: "0.5rem", fontSize: "0.875rem", color: "#1e293b", cursor: "pointer" }}>
                       <input type="radio" name="gender" value={g} checked={form.gender === g}
-                        onChange={e => set("gender", e.target.value)} style={{ accentColor: "#dc2626" }} />
+                        onChange={e => set("gender", e.target.value)} style={{ accentColor: "#003366" }} />
                       {g}
                     </label>
                   ))}
@@ -211,10 +214,7 @@ export default function AddStaffTab() {
               </div>
               <div style={{ gridColumn: "1 / -1" }}>
                 <label style={labelStyle}>Address</label>
-                <input type="text" value={form.address} onChange={e => set("address", e.target.value)}
-                  placeholder="Enter complete address" style={inputStyle}
-                  onFocus={e => (e.currentTarget.style.boxShadow = "0 0 0 3px rgba(220,38,38,0.15)")}
-                  onBlur={e => (e.currentTarget.style.boxShadow = "none")} />
+                <input type="text" value={form.address} onChange={e => set("address", e.target.value)} placeholder="Enter complete address" style={inputStyle} />
                 {errors.address && <p style={errorStyle}>{errors.address}</p>}
               </div>
             </div>
@@ -224,13 +224,15 @@ export default function AddStaffTab() {
           <div style={{ display: "flex", justifyContent: "flex-end", gap: "0.75rem" }}>
             <button type="button"
               onClick={() => { setForm(defaultForm); setPhoto("/images/default-avatar.png"); setSelectedFile(null); }}
-              style={{ padding: "0.625rem 1.5rem", border: "1px solid #e5e7eb", borderRadius: "0.5rem", background: "none", fontSize: "0.875rem", fontWeight: 600, color: "#6b7280", cursor: "pointer" }}>
+              style={{ padding: "0.625rem 1.5rem", border: "1px solid #e2e8f0", borderRadius: "0.5rem", background: "none", fontSize: "0.875rem", fontWeight: 600, color: "#64748b", cursor: "pointer", transition: "background 0.2s" }}
+              onMouseEnter={e => (e.currentTarget.style.background = "#f8fafc")}
+              onMouseLeave={e => (e.currentTarget.style.background = "none")}>
               Cancel
             </button>
             <button type="submit" disabled={processing}
-              style={{ padding: "0.625rem 1.5rem", background: processing ? "#fecaca" : "#dc2626", color: "#fff", border: "none", borderRadius: "0.5rem", fontSize: "0.875rem", fontWeight: 600, cursor: processing ? "not-allowed" : "pointer", display: "flex", alignItems: "center", gap: "0.5rem" }}
-              onMouseEnter={e => !processing && (e.currentTarget.style.background = "#b91c1c")}
-              onMouseLeave={e => !processing && (e.currentTarget.style.background = "#dc2626")}>
+              style={{ padding: "0.625rem 1.5rem", background: processing ? "#cbd5e1" : "#003366", color: "#fff", border: "none", borderRadius: "0.5rem", fontSize: "0.875rem", fontWeight: 600, cursor: processing ? "not-allowed" : "pointer", display: "flex", alignItems: "center", gap: "0.5rem", transition: "background 0.2s" }}
+              onMouseEnter={e => !processing && (e.currentTarget.style.background = "#004c99")}
+              onMouseLeave={e => !processing && (e.currentTarget.style.background = "#003366")}>
               {processing
                 ? <><div style={{ width: "1rem", height: "1rem", border: "2px solid #fff", borderTopColor: "transparent", borderRadius: "50%", animation: "spin 0.7s linear infinite" }} />Creating...</>
                 : "Add Staff Member →"}

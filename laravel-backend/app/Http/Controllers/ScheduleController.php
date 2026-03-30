@@ -131,7 +131,7 @@ class ScheduleController extends Controller
         $schedules = DB::table('schedule')
             ->where('device_id', $request->device_id)
             ->whereIn('day', [$dayCode, 'SAT-SUN'])
-            ->whereNotIn('status', ['Present', 'Attended', 'Excused'])  // includes Absent, Upcoming, Ongoing
+            ->whereNotIn('status', ['Present', 'Attended', 'Excused']) 
             ->get();
 
         if ($schedules->isEmpty()) {

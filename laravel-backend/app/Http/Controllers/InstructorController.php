@@ -132,6 +132,41 @@ class InstructorController extends Controller
     }
 
     // ── Instructor Portal endpoints ──────────────────────────────────────────
+    public function me(Request $request)
+{
+    try {
+        $user = $request->user();
+        
+        // Check if user is an instructor
+        if ($user->role !== 'instructor') {
+            return response()->json([
+                'success' => false,
+                'message' => 'Unauthorized. Instructor access required.'
+            ], 403);
+        }
+
+        // Get instructor details from users table
+        return response()->json([
+            'id'             => $user->id,
+            'name'           => $user->name,
+            'email'          => $user->email,
+            'role'           => $user->role,
+            'status'         => $user->status ?? 'Active',
+            'instructor_id'  => $user->instructor_id,
+            'department'     => $user->department,
+            'specialization' => $user->specialization,
+            'profile_url'    => $user->profile_url ? url('/api/instructor/photo') : null,
+            'qr_payload'     => $user->qr_payload,
+        ]);
+        
+    } catch (\Exception $e) {
+        \Log::error('Instructor me error: ' . $e->getMessage());
+        return response()->json([
+            'success' => false,
+            'message' => 'Failed to fetch instructor profile'
+        ], 500);
+    }
+}
 public function markAbsentManual(Request $request)
 {
     try {
@@ -141,6 +176,23 @@ public function markAbsentManual(Request $request)
         ]);
 
         $today = now()->format('Y-m-d');
+
+        // Check schedule status first
+        $schedule = DB::table('schedule')
+            ->where('id', $request->schedule_id)
+            ->first();
+
+        if (!$schedule) {
+            return response()->json(['success' => false, 'message' => 'Schedule not found'], 404);
+        }
+
+        // Don't proceed if status is upcoming or ongoing
+        if ($schedule->status === 'Upcoming' || $schedule->status === 'Ongoing') {
+            return response()->json([
+                'success' => false, 
+                'message' => 'Cannot mark absent for schedule with status: ' . $schedule->status
+            ], 400);
+        }
 
         // Check if already logged today
         $alreadyLogged = DB::table('attendance_logs_db')
@@ -153,6 +205,7 @@ public function markAbsentManual(Request $request)
             return response()->json(['success' => true, 'message' => 'Already logged']);
         }
 
+        // Insert attendance record
         DB::table('attendance_logs_db')->insert([
             'instructor_id' => $request->instructor_id,
             'schedule_id'   => $request->schedule_id,
@@ -174,36 +227,12 @@ public function markAbsentManual(Request $request)
         ]);
 
         return response()->json(['success' => true, 'message' => 'Marked absent successfully']);
-
+        
     } catch (\Exception $e) {
         \Log::error('markAbsentManual error: ' . $e->getMessage());
         return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
     }
 }
-    public function me(Request $request)
-    {
-        $user = $request->user();
-
-        // Use instructor_id as QR payload (it's short and unique)
-        $qr_payload = $user->instructor_id;
-
-        return response()->json([
-            'id'              => $user->id,
-            'name'            => $user->name,
-            'email'           => $user->email,
-            'instructor_id'   => $user->instructor_id,
-            'department'      => $user->department ?? null,
-            'specialization'  => $user->specialization ?? null,
-            'role'            => $user->role,
-            'status'          => $user->status,
-            'profile_url'     => $user->profile_url
-                                    ? url('/api/instructor/photo')
-                                    : null,
-            'scan_status'     => $user->scan_status,
-            'last_scanned_at' => $user->last_scanned_at,
-            'qr_payload'      => $qr_payload,
-        ]);
-    }
 
     public function updateProfile(Request $request)
     {

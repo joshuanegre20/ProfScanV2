@@ -9,15 +9,24 @@ interface Department {
   created_at: string;
 }
 
+const glassCardStyle = {
+  background: "#fff",
+  borderRadius: "1rem",
+  boxShadow: "0 1px 3px rgba(0,0,0,0.08)",
+  border: "1px solid #e2e8f0",
+  overflow: "hidden",
+};
+
 const inputStyle: React.CSSProperties = {
-  width: "100%", padding: "0.625rem 1rem", border: "1px solid #e5e7eb",
-  borderRadius: "0.5rem", fontSize: "0.875rem", color: "#1f2937",
+  width: "100%", padding: "0.625rem 1rem", border: "1px solid #e2e8f0",
+  borderRadius: "0.5rem", fontSize: "0.875rem", color: "#1e293b",
   outline: "none", boxSizing: "border-box", fontFamily: "inherit",
   transition: "border-color 0.15s, box-shadow 0.15s",
+  background: "#fff",
 };
 
 const labelStyle: React.CSSProperties = {
-  display: "block", fontSize: "0.7rem", fontWeight: 600, color: "#6b7280",
+  display: "block", fontSize: "0.7rem", fontWeight: 600, color: "#64748b",
   textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: "0.375rem",
 };
 
@@ -57,7 +66,6 @@ export default function AddDepartmentTab() {
     e.preventDefault();
     setErrors({});
 
-    // Validate
     const validationErrors: Record<string, string> = {};
     if (!form.degree_program.trim()) {
       validationErrors.degree_program = "Degree program is required";
@@ -91,7 +99,7 @@ export default function AddDepartmentTab() {
   };
 
   const handleDelete = async (id: number) => {
-    if (!confirm("Are you sure you want to delete this department? This may affect subjects and instructors associated with it.")) return;
+    if (!confirm("Are you sure you want to delete this department?")) return;
     
     setDeleteProcessing(id);
     try {
@@ -109,12 +117,14 @@ export default function AddDepartmentTab() {
     <div style={{ fontFamily: "ui-sans-serif, system-ui, sans-serif" }}>
 
       {/* Header */}
-      <div style={{ background: "linear-gradient(135deg, #312e81, #4338ca)", color: "#fff", borderRadius: "0.75rem", padding: "1.5rem 2rem", marginBottom: "1.5rem", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+      <div style={{ background: "linear-gradient(135deg, #003366, #0055a4)", color: "#fff", borderRadius: "0.75rem", padding: "1.5rem 2rem", marginBottom: "1.5rem", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
         <div style={{ display: "flex", flexDirection: "column", alignItems: "center", flex: 1, gap: "0.5rem", textAlign: "center" }}>
-          <img src="/images/tmclogo2.png" alt="TMC" style={{ width: "3rem", height: "3rem", objectFit: "contain" }} onError={e => (e.currentTarget.style.display = "none")} />
+          <div style={{ width: "3rem", height: "3rem", borderRadius: "50%", background: "rgba(255,255,255,0.2)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "1.5rem" }}>
+            🏛️
+          </div>
           <div>
             <h1 style={{ fontSize: "1.25rem", fontWeight: 700 }}>Admin Portal</h1>
-            <p style={{ color: "#a5b4fc", fontSize: "0.8rem" }}>Manage Departments</p>
+            <p style={{ color: "#bfdbfe", fontSize: "0.8rem" }}>Manage Departments</p>
           </div>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", background: "rgba(255,255,255,0.1)", padding: "0.375rem 0.875rem", borderRadius: "9999px", fontSize: "0.75rem" }}>
@@ -126,29 +136,29 @@ export default function AddDepartmentTab() {
       {/* Success Message */}
       {success && (
         <div style={{ background: "#dcfce7", border: "1px solid #bbf7d0", borderRadius: "0.5rem", padding: "1rem", marginBottom: "1.5rem", display: "flex", alignItems: "center", gap: "0.75rem" }}>
-          <svg width="20" height="20" fill="none" stroke="#16a34a" viewBox="0 0 24 24">
+          <svg width="20" height="20" fill="none" stroke="#15803d" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
           </svg>
-          <span style={{ color: "#166534", fontSize: "0.875rem" }}>{success}</span>
+          <span style={{ color: "#15803d", fontSize: "0.875rem" }}>{success}</span>
         </div>
       )}
 
       {/* Main Card */}
-      <div style={{ background: "#fff", borderRadius: "1rem", boxShadow: "0 1px 3px rgba(0,0,0,0.08)", border: "1px solid #f3f4f6", overflow: "hidden" }}>
+      <div style={glassCardStyle}>
         
         {/* Card Header */}
-        <div style={{ padding: "1.25rem 1.5rem", borderBottom: "1px solid #f3f4f6", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+        <div style={{ padding: "1.25rem 1.5rem", borderBottom: "1px solid #e2e8f0", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
           <div>
-            <h2 style={{ fontSize: "1rem", fontWeight: 700, color: "#1f2937" }}>Departments List</h2>
-            <p style={{ fontSize: "0.8rem", color: "#9ca3af", marginTop: "0.125rem" }}>
+            <h2 style={{ fontSize: "1rem", fontWeight: 700, color: "#1e293b" }}>Departments List</h2>
+            <p style={{ fontSize: "0.8rem", color: "#64748b", marginTop: "0.125rem" }}>
               Manage all academic departments and colleges
             </p>
           </div>
           <button
             onClick={() => setShowModal(true)}
-            style={{ background: "#4f46e5", color: "#fff", border: "none", padding: "0.5rem 1rem", borderRadius: "0.5rem", fontSize: "0.875rem", fontWeight: 500, cursor: "pointer", display: "flex", alignItems: "center", gap: "0.4rem" }}
-            onMouseEnter={e => (e.currentTarget.style.background = "#4338ca")}
-            onMouseLeave={e => (e.currentTarget.style.background = "#4f46e5")}
+            style={{ background: "#003366", color: "#fff", border: "none", padding: "0.5rem 1rem", borderRadius: "0.5rem", fontSize: "0.875rem", fontWeight: 500, cursor: "pointer", display: "flex", alignItems: "center", gap: "0.4rem", transition: "background 0.2s" }}
+            onMouseEnter={e => (e.currentTarget.style.background = "#004c99")}
+            onMouseLeave={e => (e.currentTarget.style.background = "#003366")}
           >
             <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <line x1="12" y1="5" x2="12" y2="19" strokeWidth={2.5} strokeLinecap="round" />
@@ -161,37 +171,37 @@ export default function AddDepartmentTab() {
         {/* Table */}
         {loading ? (
           <div style={{ padding: "3rem", textAlign: "center" }}>
-            <div style={{ width: "2rem", height: "2rem", border: "2px solid #e5e7eb", borderTopColor: "#4f46e5", borderRadius: "50%", animation: "spin 0.7s linear infinite", margin: "0 auto 1rem" }} />
-            <p style={{ color: "#6b7280", fontSize: "0.875rem" }}>Loading departments...</p>
+            <div style={{ width: "2rem", height: "2rem", border: "2px solid #e2e8f0", borderTopColor: "#003366", borderRadius: "50%", animation: "spin 0.7s linear infinite", margin: "0 auto 1rem" }} />
+            <p style={{ color: "#64748b", fontSize: "0.875rem" }}>Loading departments...</p>
           </div>
         ) : departments.length === 0 ? (
           <div style={{ padding: "3rem", textAlign: "center" }}>
-            <svg width="48" height="48" fill="none" stroke="#9ca3af" viewBox="0 0 24 24" style={{ margin: "0 auto 1rem" }}>
+            <svg width="48" height="48" fill="none" stroke="#94a3b8" viewBox="0 0 24 24" style={{ margin: "0 auto 1rem" }}>
               <rect x="2" y="7" width="20" height="14" rx="2" ry="2" strokeWidth={1.5} />
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16" />
             </svg>
-            <p style={{ color: "#6b7280", fontSize: "0.875rem" }}>No departments found</p>
-            <p style={{ color: "#9ca3af", fontSize: "0.75rem", marginTop: "0.25rem" }}>Click "Add Department" to create one</p>
+            <p style={{ color: "#64748b", fontSize: "0.875rem" }}>No departments found</p>
+            <p style={{ color: "#94a3b8", fontSize: "0.75rem", marginTop: "0.25rem" }}>Click "Add Department" to create one</p>
           </div>
         ) : (
           <div style={{ overflowX: "auto" }}>
             <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.875rem" }}>
-              <thead style={{ background: "#f9fafb", borderBottom: "1px solid #f3f4f6" }}>
+              <thead style={{ background: "#f8fafc", borderBottom: "1px solid #e2e8f0" }}>
                 <tr>
-                  <th style={{ padding: "0.75rem 1.5rem", textAlign: "left", fontWeight: 600, color: "#4b5563", fontSize: "0.75rem", textTransform: "uppercase", letterSpacing: "0.05em" }}>ID</th>
-                  <th style={{ padding: "0.75rem 1.5rem", textAlign: "left", fontWeight: 600, color: "#4b5563", fontSize: "0.75rem", textTransform: "uppercase", letterSpacing: "0.05em" }}>Degree Program</th>
-                  <th style={{ padding: "0.75rem 1.5rem", textAlign: "left", fontWeight: 600, color: "#4b5563", fontSize: "0.75rem", textTransform: "uppercase", letterSpacing: "0.05em" }}>College</th>
-                  <th style={{ padding: "0.75rem 1.5rem", textAlign: "left", fontWeight: 600, color: "#4b5563", fontSize: "0.75rem", textTransform: "uppercase", letterSpacing: "0.05em" }}>Created</th>
-                  <th style={{ padding: "0.75rem 1.5rem", textAlign: "right", fontWeight: 600, color: "#4b5563", fontSize: "0.75rem", textTransform: "uppercase", letterSpacing: "0.05em" }}>Actions</th>
+                  <th style={{ padding: "0.75rem 1.5rem", textAlign: "left", fontWeight: 600, color: "#475569", fontSize: "0.75rem", textTransform: "uppercase", letterSpacing: "0.05em" }}>ID</th>
+                  <th style={{ padding: "0.75rem 1.5rem", textAlign: "left", fontWeight: 600, color: "#475569", fontSize: "0.75rem", textTransform: "uppercase", letterSpacing: "0.05em" }}>Degree Program</th>
+                  <th style={{ padding: "0.75rem 1.5rem", textAlign: "left", fontWeight: 600, color: "#475569", fontSize: "0.75rem", textTransform: "uppercase", letterSpacing: "0.05em" }}>College</th>
+                  <th style={{ padding: "0.75rem 1.5rem", textAlign: "left", fontWeight: 600, color: "#475569", fontSize: "0.75rem", textTransform: "uppercase", letterSpacing: "0.05em" }}>Created</th>
+                  <th style={{ padding: "0.75rem 1.5rem", textAlign: "right", fontWeight: 600, color: "#475569", fontSize: "0.75rem", textTransform: "uppercase", letterSpacing: "0.05em" }}>Actions</th>
                 </tr>
               </thead>
               <tbody>
                 {departments.map((dept, idx) => (
-                  <tr key={dept.id} style={{ borderBottom: "1px solid #f3f4f6", background: idx % 2 === 0 ? "#fff" : "#fafafa" }}>
-                    <td style={{ padding: "0.75rem 1.5rem", color: "#6b7280", fontFamily: "monospace", fontSize: "0.75rem" }}>#{dept.id}</td>
-                    <td style={{ padding: "0.75rem 1.5rem", fontWeight: 600, color: "#1f2937" }}>{dept.degree_program}</td>
-                    <td style={{ padding: "0.75rem 1.5rem", color: "#374151" }}>{dept.college}</td>
-                    <td style={{ padding: "0.75rem 1.5rem", color: "#6b7280", fontSize: "0.75rem" }}>
+                  <tr key={dept.id} style={{ borderBottom: "1px solid #e2e8f0", background: idx % 2 === 0 ? "#fff" : "#fafafa" }}>
+                    <td style={{ padding: "0.75rem 1.5rem", color: "#64748b", fontFamily: "monospace", fontSize: "0.75rem" }}>#{dept.id}</td>
+                    <td style={{ padding: "0.75rem 1.5rem", fontWeight: 600, color: "#1e293b" }}>{dept.degree_program}</td>
+                    <td style={{ padding: "0.75rem 1.5rem", color: "#1e293b" }}>{dept.college}</td>
+                    <td style={{ padding: "0.75rem 1.5rem", color: "#64748b", fontSize: "0.75rem" }}>
                       {new Date(dept.created_at).toLocaleDateString()}
                     </td>
                     <td style={{ padding: "0.75rem 1.5rem", textAlign: "right" }}>
@@ -203,17 +213,18 @@ export default function AddDepartmentTab() {
                           border: "1px solid #fecaca",
                           borderRadius: "0.375rem",
                           background: deleteProcessing === dept.id ? "#fee2e2" : "#fff",
-                          color: deleteProcessing === dept.id ? "#9ca3af" : "#dc2626",
+                          color: deleteProcessing === dept.id ? "#94a3b8" : "#ef4444",
                           fontSize: "0.75rem",
                           cursor: deleteProcessing === dept.id ? "wait" : "pointer",
                           display: "inline-flex",
                           alignItems: "center",
                           gap: "0.25rem",
+                          transition: "all 0.2s",
                         }}
                       >
                         {deleteProcessing === dept.id ? (
                           <>
-                            <div style={{ width: "0.75rem", height: "0.75rem", border: "2px solid #dc2626", borderTopColor: "transparent", borderRadius: "50%", animation: "spin 0.7s linear infinite" }} />
+                            <div style={{ width: "0.75rem", height: "0.75rem", border: "2px solid #ef4444", borderTopColor: "transparent", borderRadius: "50%", animation: "spin 0.7s linear infinite" }} />
                             Deleting...
                           </>
                         ) : (
@@ -231,12 +242,11 @@ export default function AddDepartmentTab() {
               </tbody>
             </table>
             
-            {/* Table footer */}
-            <div style={{ padding: "0.75rem 1.5rem", borderTop: "1px solid #f3f4f6", background: "#fafafa", display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: "0.75rem", color: "#6b7280" }}>
+            <div style={{ padding: "0.75rem 1.5rem", borderTop: "1px solid #e2e8f0", background: "#fafafa", display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: "0.75rem", color: "#64748b" }}>
               <span>Total departments: <strong>{departments.length}</strong></span>
               <button
                 onClick={fetchDepartments}
-                style={{ background: "none", border: "none", color: "#4f46e5", cursor: "pointer", display: "flex", alignItems: "center", gap: "0.25rem" }}
+                style={{ background: "none", border: "none", color: "#003366", cursor: "pointer", display: "flex", alignItems: "center", gap: "0.25rem" }}
               >
                 <svg width="12" height="12" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
@@ -254,8 +264,8 @@ export default function AddDepartmentTab() {
           <div style={{ background: "#fff", borderRadius: "1rem", boxShadow: "0 25px 50px rgba(0,0,0,0.2)", width: "100%", maxWidth: "28rem" }}>
             <div style={{ padding: "1.5rem" }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1.5rem" }}>
-                <h2 style={{ fontSize: "1.1rem", fontWeight: 700, color: "#1f2937" }}>Add New Department</h2>
-                <button onClick={() => setShowModal(false)} style={{ background: "none", border: "none", cursor: "pointer", color: "#9ca3af" }}>
+                <h2 style={{ fontSize: "1.1rem", fontWeight: 700, color: "#1e293b" }}>Add New Department</h2>
+                <button onClick={() => setShowModal(false)} style={{ background: "none", border: "none", cursor: "pointer", color: "#94a3b8" }}>
                   <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                   </svg>
@@ -271,6 +281,8 @@ export default function AddDepartmentTab() {
                     onChange={e => setForm({ ...form, degree_program: e.target.value })}
                     placeholder="e.g., CCS, CBA, CTE"
                     style={inputStyle}
+                    onFocus={e => (e.currentTarget.style.boxShadow = "0 0 0 3px rgba(0,51,102,0.15)")}
+                    onBlur={e => (e.currentTarget.style.boxShadow = "none")}
                   />
                   {errors.degree_program && (
                     <p style={{ color: "#ef4444", fontSize: "0.75rem", marginTop: "0.25rem" }}>{errors.degree_program}</p>
@@ -285,6 +297,8 @@ export default function AddDepartmentTab() {
                     onChange={e => setForm({ ...form, college: e.target.value })}
                     placeholder="e.g., College of Computer Studies"
                     style={inputStyle}
+                    onFocus={e => (e.currentTarget.style.boxShadow = "0 0 0 3px rgba(0,51,102,0.15)")}
+                    onBlur={e => (e.currentTarget.style.boxShadow = "none")}
                   />
                   {errors.college && (
                     <p style={{ color: "#ef4444", fontSize: "0.75rem", marginTop: "0.25rem" }}>{errors.college}</p>
@@ -295,14 +309,18 @@ export default function AddDepartmentTab() {
                   <button
                     type="button"
                     onClick={() => setShowModal(false)}
-                    style={{ padding: "0.5rem 1.25rem", border: "1px solid #e5e7eb", borderRadius: "0.5rem", background: "none", fontSize: "0.875rem", cursor: "pointer", color: "#6b7280" }}
+                    style={{ padding: "0.5rem 1.25rem", border: "1px solid #e2e8f0", borderRadius: "0.5rem", background: "none", fontSize: "0.875rem", cursor: "pointer", color: "#64748b", transition: "background 0.2s" }}
+                    onMouseEnter={e => (e.currentTarget.style.background = "#f8fafc")}
+                    onMouseLeave={e => (e.currentTarget.style.background = "none")}
                   >
                     Cancel
                   </button>
                   <button
                     type="submit"
                     disabled={processing}
-                    style={{ padding: "0.5rem 1.25rem", background: processing ? "#c7d2fe" : "#4f46e5", color: "#fff", border: "none", borderRadius: "0.5rem", fontSize: "0.875rem", fontWeight: 500, cursor: processing ? "not-allowed" : "pointer" }}
+                    style={{ padding: "0.5rem 1.25rem", background: processing ? "#cbd5e1" : "#003366", color: "#fff", border: "none", borderRadius: "0.5rem", fontSize: "0.875rem", fontWeight: 500, cursor: processing ? "not-allowed" : "pointer", transition: "background 0.2s" }}
+                    onMouseEnter={e => { if (!processing) e.currentTarget.style.background = "#004c99"; }}
+                    onMouseLeave={e => { if (!processing) e.currentTarget.style.background = "#003366"; }}
                   >
                     {processing ? "Adding..." : "Add Department"}
                   </button>

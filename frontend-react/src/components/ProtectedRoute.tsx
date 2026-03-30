@@ -11,7 +11,7 @@ export default function ProtectedRoute({ children, allowedRoles }: Props) {
   const role  = localStorage.getItem("role");
 
   if (!token) return <Navigate to="/login" />;
-  if (!allowedRoles.includes(role ?? "")) return <Navigate to="/unauthorized" />;
+  if (!allowedRoles.includes(role ?? "")) return <Navigate to="/login" />;
 
   return <>{children}</>;
 }

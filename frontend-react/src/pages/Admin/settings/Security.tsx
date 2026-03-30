@@ -2,15 +2,24 @@
 import React, { useState, useEffect } from "react";
 import api from "../../../api/axios";
 
+const glassCardStyle = {
+  background: "#fff",
+  borderRadius: "1rem",
+  boxShadow: "0 1px 3px rgba(0,0,0,0.08)",
+  border: "1px solid #e2e8f0",
+  overflow: "hidden",
+};
+
 const inputStyle: React.CSSProperties = {
-  width: "100%", padding: "0.625rem 1rem", border: "1px solid #e5e7eb",
-  borderRadius: "0.5rem", fontSize: "0.875rem", color: "#1f2937",
+  width: "100%", padding: "0.625rem 1rem", border: "1px solid #e2e8f0",
+  borderRadius: "0.5rem", fontSize: "0.875rem", color: "#1e293b",
   outline: "none", boxSizing: "border-box", fontFamily: "inherit",
   transition: "border-color 0.15s, box-shadow 0.15s",
+  background: "#fff",
 };
 
 const labelStyle: React.CSSProperties = {
-  display: "block", fontSize: "0.7rem", fontWeight: 600, color: "#6b7280",
+  display: "block", fontSize: "0.7rem", fontWeight: 600, color: "#64748b",
   textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: "0.375rem",
 };
 
@@ -26,31 +35,31 @@ interface AdminInfo {
 }
 
 export default function ProfileTab() {
-  const [adminInfo, setAdminInfo]         = useState<AdminInfo>({ name: "", email: "", role: "", profile_url: null });
-  const [loadingInfo, setLoadingInfo]     = useState(true);
-  const [isEditing, setIsEditing]         = useState(false);
+  const [adminInfo, setAdminInfo] = useState<AdminInfo>({ name: "", email: "", role: "", profile_url: null });
+  const [loadingInfo, setLoadingInfo] = useState(true);
+  const [isEditing, setIsEditing] = useState(false);
 
   // Avatar
-  const [avatarUrl, setAvatarUrl]               = useState<string | null>(null);
+  const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
   const [avatarProcessing, setAvatarProcessing] = useState(false);
-  const [avatarSuccess, setAvatarSuccess]       = useState("");
+  const [avatarSuccess, setAvatarSuccess] = useState("");
 
   // Profile form
-  const [profileForm, setProfileForm]               = useState({ name: "", email: "" });
-  const [profileErrors, setProfileErrors]           = useState<Record<string, string>>({});
-  const [profileSuccess, setProfileSuccess]         = useState("");
-  const [profileProcessing, setProfileProcessing]   = useState(false);
+  const [profileForm, setProfileForm] = useState({ name: "", email: "" });
+  const [profileErrors, setProfileErrors] = useState<Record<string, string>>({});
+  const [profileSuccess, setProfileSuccess] = useState("");
+  const [profileProcessing, setProfileProcessing] = useState(false);
 
   // Password form
   const [passwordForm, setPasswordForm] = useState({
     current_password: "", new_password: "", new_password_confirmation: "",
   });
-  const [passwordErrors, setPasswordErrors]         = useState<Record<string, string>>({});
-  const [passwordSuccess, setPasswordSuccess]       = useState("");
+  const [passwordErrors, setPasswordErrors] = useState<Record<string, string>>({});
+  const [passwordSuccess, setPasswordSuccess] = useState("");
   const [passwordProcessing, setPasswordProcessing] = useState(false);
 
   const [showCurrent, setShowCurrent] = useState(false);
-  const [showNew, setShowNew]         = useState(false);
+  const [showNew, setShowNew] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
 
   const loadAvatar = async () => {
@@ -161,12 +170,12 @@ export default function ProfileTab() {
           placeholder="••••••••"
           required
           style={{ ...inputStyle, paddingRight: "2.5rem" }}
-          onFocus={e => (e.currentTarget.style.boxShadow = "0 0 0 3px rgba(99,102,241,0.15)")}
+          onFocus={e => (e.currentTarget.style.boxShadow = "0 0 0 3px rgba(0,51,102,0.15)")}
           onBlur={e => (e.currentTarget.style.boxShadow = "none")}
         />
         <button
           type="button" onClick={onToggle}
-          style={{ position: "absolute", right: "0.75rem", top: "50%", transform: "translateY(-50%)", background: "none", border: "none", cursor: "pointer", color: "#9ca3af", padding: 0 }}
+          style={{ position: "absolute", right: "0.75rem", top: "50%", transform: "translateY(-50%)", background: "none", border: "none", cursor: "pointer", color: "#94a3b8", padding: 0 }}
         >
           {show ? (
             <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -188,27 +197,27 @@ export default function ProfileTab() {
     <div style={{ fontFamily: "ui-sans-serif, system-ui, sans-serif", maxWidth: "48rem", margin: "0 auto" }}>
 
       {/* Header */}
-      <div style={{ background: "linear-gradient(135deg, #312e81, #4338ca)", color: "#fff", borderRadius: "0.75rem", padding: "1.5rem 2rem", marginBottom: "1.5rem", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+      <div style={{ background: "linear-gradient(135deg, #003366, #0055a4)", color: "#fff", borderRadius: "0.75rem", padding: "1.5rem 2rem", marginBottom: "1.5rem", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
         <div>
           <h1 style={{ fontSize: "1.125rem", fontWeight: 700 }}>My Profile</h1>
-          <p style={{ color: "#a5b4fc", fontSize: "0.8rem", marginTop: "0.25rem" }}>Manage your profile information and password</p>
+          <p style={{ color: "#bfdbfe", fontSize: "0.8rem", marginTop: "0.25rem" }}>Manage your profile information and password</p>
         </div>
         <div style={{ background: "rgba(255,255,255,0.15)", borderRadius: "50%", padding: "0.75rem", display: "flex" }}>
-          <svg width="24" height="24" fill="none" stroke="#fff" viewBox="0 0 24 24">
+          <svg width="24" height="24" fill="none" stroke="#ffd700" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
           </svg>
         </div>
       </div>
 
-      {/* ── Profile Card ── */}
-      <div style={{ background: "#fff", borderRadius: "1rem", boxShadow: "0 1px 3px rgba(0,0,0,0.08)", border: "1px solid #f3f4f6", marginBottom: "1.5rem", overflow: "hidden" }}>
+      {/* Profile Card */}
+      <div style={{ ...glassCardStyle, marginBottom: "1.5rem" }}>
 
-        <div style={{ padding: "1rem 1.5rem", borderBottom: "1px solid #f3f4f6", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+        <div style={{ padding: "1rem 1.5rem", borderBottom: "1px solid #e2e8f0", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
           <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
-            <svg width="16" height="16" fill="none" stroke="#4f46e5" viewBox="0 0 24 24">
+            <svg width="16" height="16" fill="none" stroke="#003366" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
             </svg>
-            <h2 style={{ fontSize: "0.875rem", fontWeight: 700, color: "#1f2937" }}>Profile Information</h2>
+            <h2 style={{ fontSize: "0.875rem", fontWeight: 700, color: "#1e293b" }}>Profile Information</h2>
           </div>
 
           {!loadingInfo && (
@@ -219,7 +228,7 @@ export default function ProfileTab() {
                 setProfileSuccess("");
                 if (isEditing) setProfileForm({ name: adminInfo.name, email: adminInfo.email });
               }}
-              style={{ display: "flex", alignItems: "center", gap: "0.35rem", background: isEditing ? "none" : "#eef2ff", border: isEditing ? "1px solid #e5e7eb" : "none", color: isEditing ? "#6b7280" : "#4f46e5", borderRadius: "0.5rem", padding: "0.375rem 0.75rem", fontSize: "0.8rem", fontWeight: 600, cursor: "pointer" }}
+              style={{ display: "flex", alignItems: "center", gap: "0.35rem", background: isEditing ? "none" : "#eef2ff", border: isEditing ? "1px solid #e2e8f0" : "none", color: isEditing ? "#64748b" : "#003366", borderRadius: "0.5rem", padding: "0.375rem 0.75rem", fontSize: "0.8rem", fontWeight: 600, cursor: "pointer" }}
             >
               {isEditing ? (
                 <><svg width="13" height="13" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>Cancel</>
@@ -233,28 +242,28 @@ export default function ProfileTab() {
         <div style={{ padding: "1.5rem" }}>
           {loadingInfo ? (
             <div style={{ display: "flex", justifyContent: "center", padding: "1rem" }}>
-              <div style={{ width: "1.5rem", height: "1.5rem", border: "2px solid #e5e7eb", borderTopColor: "#4f46e5", borderRadius: "50%", animation: "spin 0.7s linear infinite" }} />
+              <div style={{ width: "1.5rem", height: "1.5rem", border: "2px solid #e2e8f0", borderTopColor: "#003366", borderRadius: "50%", animation: "spin 0.7s linear infinite" }} />
             </div>
           ) : (
             <>
-              {/* ── Avatar Section ── */}
-              <div style={{ display: "flex", alignItems: "center", gap: "1.25rem", marginBottom: "1.5rem", paddingBottom: "1.5rem", borderBottom: "1px solid #f3f4f6" }}>
+              {/* Avatar Section */}
+              <div style={{ display: "flex", alignItems: "center", gap: "1.25rem", marginBottom: "1.5rem", paddingBottom: "1.5rem", borderBottom: "1px solid #e2e8f0" }}>
                 <div style={{ position: "relative", flexShrink: 0 }}>
-                  <div style={{ width: "5rem", height: "5rem", borderRadius: "50%", overflow: "hidden", border: "3px solid #e0e7ff", boxShadow: "0 2px 8px rgba(0,0,0,0.1)", background: "#f3f4f6" }}>
+                  <div style={{ width: "5rem", height: "5rem", borderRadius: "50%", overflow: "hidden", border: "3px solid #ffd700", boxShadow: "0 2px 8px rgba(0,0,0,0.1)", background: "#f1f5f9" }}>
                     {avatarUrl ? (
                       <img src={avatarUrl} alt="Profile" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
                     ) : (
                       <div style={{ width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center", background: "#eef2ff" }}>
-                        <svg width="32" height="32" fill="none" stroke="#a5b4fc" viewBox="0 0 24 24">
+                        <svg width="32" height="32" fill="none" stroke="#003366" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
                         </svg>
                       </div>
                     )}
                   </div>
                   <label
-                    style={{ position: "absolute", bottom: "-2px", right: "-2px", background: avatarProcessing ? "#c7d2fe" : "#4f46e5", color: "#fff", padding: "0.3rem", borderRadius: "50%", cursor: avatarProcessing ? "not-allowed" : "pointer", boxShadow: "0 2px 6px rgba(0,0,0,0.2)", display: "flex" }}
-                    onMouseEnter={e => !avatarProcessing && (e.currentTarget.style.background = "#4338ca")}
-                    onMouseLeave={e => !avatarProcessing && (e.currentTarget.style.background = "#4f46e5")}
+                    style={{ position: "absolute", bottom: "-2px", right: "-2px", background: avatarProcessing ? "#cbd5e1" : "#003366", color: "#fff", padding: "0.3rem", borderRadius: "50%", cursor: avatarProcessing ? "not-allowed" : "pointer", boxShadow: "0 2px 6px rgba(0,0,0,0.2)", display: "flex", transition: "background 0.2s" }}
+                    onMouseEnter={e => !avatarProcessing && (e.currentTarget.style.background = "#004c99")}
+                    onMouseLeave={e => !avatarProcessing && (e.currentTarget.style.background = "#003366")}
                   >
                     {avatarProcessing ? (
                       <div style={{ width: "14px", height: "14px", border: "2px solid #fff", borderTopColor: "transparent", borderRadius: "50%", animation: "spin 0.7s linear infinite" }} />
@@ -268,22 +277,22 @@ export default function ProfileTab() {
                 </div>
 
                 <div>
-                  <p style={{ fontSize: "0.875rem", fontWeight: 600, color: "#1f2937" }}>{adminInfo.name || "Admin"}</p>
-                  <p style={{ fontSize: "0.75rem", color: "#9ca3af", marginTop: "0.125rem" }}>Click the pencil icon to change photo</p>
-                  <p style={{ fontSize: "0.7rem", color: "#d1d5db", marginTop: "0.125rem" }}>JPG, PNG, WEBP — max 2MB</p>
+                  <p style={{ fontSize: "0.875rem", fontWeight: 600, color: "#1e293b" }}>{adminInfo.name || "Admin"}</p>
+                  <p style={{ fontSize: "0.75rem", color: "#64748b", marginTop: "0.125rem" }}>Click the pencil icon to change photo</p>
+                  <p style={{ fontSize: "0.7rem", color: "#94a3b8", marginTop: "0.125rem" }}>JPG, PNG, WEBP — max 2MB</p>
                   {avatarSuccess && (
-                    <p style={{ fontSize: "0.75rem", color: "#16a34a", marginTop: "0.25rem", fontWeight: 500 }}>✓ {avatarSuccess}</p>
+                    <p style={{ fontSize: "0.75rem", color: "#22c55e", marginTop: "0.25rem", fontWeight: 500 }}>✓ {avatarSuccess}</p>
                   )}
                 </div>
               </div>
 
-              {/* ── Edit Form or View Mode ── */}
+              {/* Edit Form or View Mode */}
               {isEditing ? (
                 <form onSubmit={handleUpdateProfile} style={{ display: "flex", flexDirection: "column", gap: "1.25rem" }}>
                   <div>
                     <label style={labelStyle}>Full Name *</label>
                     <input type="text" value={profileForm.name} onChange={e => setProfileField("name", e.target.value)} required style={inputStyle}
-                      onFocus={e => (e.currentTarget.style.boxShadow = "0 0 0 3px rgba(99,102,241,0.15)")}
+                      onFocus={e => (e.currentTarget.style.boxShadow = "0 0 0 3px rgba(0,51,102,0.15)")}
                       onBlur={e => (e.currentTarget.style.boxShadow = "none")} />
                     {profileErrors.name && <p style={errorStyle}>{profileErrors.name}</p>}
                   </div>
@@ -291,14 +300,14 @@ export default function ProfileTab() {
                   <div>
                     <label style={labelStyle}>Email Address *</label>
                     <input type="email" value={profileForm.email} onChange={e => setProfileField("email", e.target.value)} required style={inputStyle}
-                      onFocus={e => (e.currentTarget.style.boxShadow = "0 0 0 3px rgba(99,102,241,0.15)")}
+                      onFocus={e => (e.currentTarget.style.boxShadow = "0 0 0 3px rgba(0,51,102,0.15)")}
                       onBlur={e => (e.currentTarget.style.boxShadow = "none")} />
                     {profileErrors.email && <p style={errorStyle}>{profileErrors.email}</p>}
                   </div>
 
                   <div>
                     <label style={labelStyle}>Role</label>
-                    <div style={{ ...inputStyle, background: "#f9fafb", color: "#9ca3af", display: "flex", alignItems: "center" }}>
+                    <div style={{ ...inputStyle, background: "#f8fafc", color: "#94a3b8", display: "flex", alignItems: "center" }}>
                       {adminInfo.role || "Admin"}
                     </div>
                   </div>
@@ -306,13 +315,15 @@ export default function ProfileTab() {
                   <div style={{ display: "flex", justifyContent: "flex-end", gap: "0.75rem" }}>
                     <button type="button"
                       onClick={() => { setIsEditing(false); setProfileForm({ name: adminInfo.name, email: adminInfo.email }); }}
-                      style={{ padding: "0.625rem 1.25rem", border: "1px solid #e5e7eb", borderRadius: "0.5rem", background: "none", fontSize: "0.875rem", fontWeight: 600, color: "#6b7280", cursor: "pointer" }}>
+                      style={{ padding: "0.625rem 1.25rem", border: "1px solid #e2e8f0", borderRadius: "0.5rem", background: "none", fontSize: "0.875rem", fontWeight: 600, color: "#64748b", cursor: "pointer", transition: "background 0.2s" }}
+                      onMouseEnter={e => (e.currentTarget.style.background = "#f8fafc")}
+                      onMouseLeave={e => (e.currentTarget.style.background = "none")}>
                       Cancel
                     </button>
                     <button type="submit" disabled={profileProcessing}
-                      style={{ padding: "0.625rem 1.25rem", background: profileProcessing ? "#c7d2fe" : "#4f46e5", color: "#fff", border: "none", borderRadius: "0.5rem", fontSize: "0.875rem", fontWeight: 600, cursor: profileProcessing ? "not-allowed" : "pointer", display: "flex", alignItems: "center", gap: "0.5rem" }}
-                      onMouseEnter={e => !profileProcessing && (e.currentTarget.style.background = "#4338ca")}
-                      onMouseLeave={e => !profileProcessing && (e.currentTarget.style.background = "#4f46e5")}>
+                      style={{ padding: "0.625rem 1.25rem", background: profileProcessing ? "#cbd5e1" : "#003366", color: "#fff", border: "none", borderRadius: "0.5rem", fontSize: "0.875rem", fontWeight: 600, cursor: profileProcessing ? "not-allowed" : "pointer", display: "flex", alignItems: "center", gap: "0.5rem", transition: "background 0.2s" }}
+                      onMouseEnter={e => !profileProcessing && (e.currentTarget.style.background = "#004c99")}
+                      onMouseLeave={e => !profileProcessing && (e.currentTarget.style.background = "#003366")}>
                       {profileProcessing ? (
                         <><div style={{ width: "1rem", height: "1rem", border: "2px solid #fff", borderTopColor: "transparent", borderRadius: "50%", animation: "spin 0.7s linear infinite" }} />Saving...</>
                       ) : (
@@ -325,31 +336,31 @@ export default function ProfileTab() {
                 <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
                   {profileSuccess && (
                     <div style={{ display: "flex", alignItems: "center", gap: "0.625rem", background: "#dcfce7", border: "1px solid #bbf7d0", borderRadius: "0.5rem", padding: "0.625rem 1rem" }}>
-                      <svg width="15" height="15" fill="none" stroke="#16a34a" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" /></svg>
+                      <svg width="15" height="15" fill="none" stroke="#15803d" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" /></svg>
                       <p style={{ fontSize: "0.8rem", color: "#15803d", fontWeight: 500 }}>{profileSuccess}</p>
                     </div>
                   )}
 
                   <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: "1.25rem" }}>
                     <div style={{ display: "flex", flexDirection: "column", gap: "0.25rem" }}>
-                      <span style={{ fontSize: "0.7rem", fontWeight: 600, color: "#9ca3af", textTransform: "uppercase", letterSpacing: "0.05em" }}>Full Name</span>
+                      <span style={{ fontSize: "0.7rem", fontWeight: 600, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.05em" }}>Full Name</span>
                       <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
-                        <svg width="14" height="14" fill="none" stroke="#6b7280" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" /></svg>
-                        <span style={{ fontSize: "0.875rem", fontWeight: 600, color: "#1f2937" }}>{adminInfo.name || "—"}</span>
+                        <svg width="14" height="14" fill="none" stroke="#64748b" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" /></svg>
+                        <span style={{ fontSize: "0.875rem", fontWeight: 600, color: "#1e293b" }}>{adminInfo.name || "—"}</span>
                       </div>
                     </div>
 
                     <div style={{ display: "flex", flexDirection: "column", gap: "0.25rem" }}>
-                      <span style={{ fontSize: "0.7rem", fontWeight: 600, color: "#9ca3af", textTransform: "uppercase", letterSpacing: "0.05em" }}>Email Address</span>
+                      <span style={{ fontSize: "0.7rem", fontWeight: 600, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.05em" }}>Email Address</span>
                       <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
-                        <svg width="14" height="14" fill="none" stroke="#6b7280" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" /></svg>
-                        <span style={{ fontSize: "0.875rem", fontWeight: 600, color: "#1f2937" }}>{adminInfo.email || "—"}</span>
+                        <svg width="14" height="14" fill="none" stroke="#64748b" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" /></svg>
+                        <span style={{ fontSize: "0.875rem", fontWeight: 600, color: "#1e293b" }}>{adminInfo.email || "—"}</span>
                       </div>
                     </div>
 
                     <div style={{ display: "flex", flexDirection: "column", gap: "0.25rem" }}>
-                      <span style={{ fontSize: "0.7rem", fontWeight: 600, color: "#9ca3af", textTransform: "uppercase", letterSpacing: "0.05em" }}>Role</span>
-                      <span style={{ fontSize: "0.75rem", fontWeight: 600, color: "#4f46e5", background: "#eef2ff", borderRadius: "9999px", padding: "0.2rem 0.75rem", display: "inline-block", width: "fit-content" }}>
+                      <span style={{ fontSize: "0.7rem", fontWeight: 600, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.05em" }}>Role</span>
+                      <span style={{ fontSize: "0.75rem", fontWeight: 600, color: "#003366", background: "#eef2ff", borderRadius: "9999px", padding: "0.2rem 0.75rem", display: "inline-block", width: "fit-content" }}>
                         {adminInfo.role || "Admin"}
                       </span>
                     </div>
@@ -361,32 +372,32 @@ export default function ProfileTab() {
         </div>
       </div>
 
-      {/* ── Change Password Card ── */}
-      <div style={{ background: "#fff", borderRadius: "1rem", boxShadow: "0 1px 3px rgba(0,0,0,0.08)", border: "1px solid #f3f4f6", overflow: "hidden" }}>
-        <div style={{ padding: "1rem 1.5rem", borderBottom: "1px solid #f3f4f6", display: "flex", alignItems: "center", gap: "0.5rem" }}>
-          <svg width="16" height="16" fill="none" stroke="#4f46e5" viewBox="0 0 24 24">
+      {/* Change Password Card */}
+      <div style={glassCardStyle}>
+        <div style={{ padding: "1rem 1.5rem", borderBottom: "1px solid #e2e8f0", display: "flex", alignItems: "center", gap: "0.5rem" }}>
+          <svg width="16" height="16" fill="none" stroke="#003366" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" />
           </svg>
-          <h2 style={{ fontSize: "0.875rem", fontWeight: 700, color: "#1f2937" }}>Change Password</h2>
+          <h2 style={{ fontSize: "0.875rem", fontWeight: 700, color: "#1e293b" }}>Change Password</h2>
         </div>
 
         <form onSubmit={handleChangePassword} style={{ padding: "1.5rem", display: "flex", flexDirection: "column", gap: "1.25rem" }}>
-          <PasswordInput field="current_password"          label="Current Password *"     show={showCurrent} onToggle={() => setShowCurrent(p => !p)} />
-          <PasswordInput field="new_password"              label="New Password *"          show={showNew}     onToggle={() => setShowNew(p => !p)} />
+          <PasswordInput field="current_password" label="Current Password *" show={showCurrent} onToggle={() => setShowCurrent(p => !p)} />
+          <PasswordInput field="new_password" label="New Password *" show={showNew} onToggle={() => setShowNew(p => !p)} />
           <PasswordInput field="new_password_confirmation" label="Confirm New Password *" show={showConfirm} onToggle={() => setShowConfirm(p => !p)} />
 
-          <div style={{ display: "flex", alignItems: "flex-start", gap: "0.625rem", background: "#f9fafb", border: "1px solid #f3f4f6", borderRadius: "0.5rem", padding: "0.75rem 1rem" }}>
-            <svg width="14" height="14" fill="none" stroke="#9ca3af" viewBox="0 0 24 24" style={{ flexShrink: 0, marginTop: "0.125rem" }}>
+          <div style={{ display: "flex", alignItems: "flex-start", gap: "0.625rem", background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: "0.5rem", padding: "0.75rem 1rem" }}>
+            <svg width="14" height="14" fill="none" stroke="#64748b" viewBox="0 0 24 24" style={{ flexShrink: 0, marginTop: "0.125rem" }}>
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
             </svg>
-            <p style={{ fontSize: "0.75rem", color: "#6b7280", lineHeight: 1.5 }}>
+            <p style={{ fontSize: "0.75rem", color: "#475569", lineHeight: 1.5 }}>
               Password must be at least <strong>8 characters</strong> long.
             </p>
           </div>
 
           {passwordSuccess && (
             <div style={{ display: "flex", alignItems: "center", gap: "0.625rem", background: "#dcfce7", border: "1px solid #bbf7d0", borderRadius: "0.5rem", padding: "0.75rem 1rem" }}>
-              <svg width="16" height="16" fill="none" stroke="#16a34a" viewBox="0 0 24 24">
+              <svg width="16" height="16" fill="none" stroke="#15803d" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
               </svg>
               <p style={{ fontSize: "0.875rem", color: "#15803d", fontWeight: 500 }}>{passwordSuccess}</p>
@@ -395,9 +406,9 @@ export default function ProfileTab() {
 
           <div style={{ display: "flex", justifyContent: "flex-end" }}>
             <button type="submit" disabled={passwordProcessing}
-              style={{ padding: "0.625rem 1.5rem", background: passwordProcessing ? "#c7d2fe" : "#4f46e5", color: "#fff", border: "none", borderRadius: "0.5rem", fontSize: "0.875rem", fontWeight: 600, cursor: passwordProcessing ? "not-allowed" : "pointer", display: "flex", alignItems: "center", gap: "0.5rem", transition: "background 0.15s" }}
-              onMouseEnter={e => !passwordProcessing && (e.currentTarget.style.background = "#4338ca")}
-              onMouseLeave={e => !passwordProcessing && (e.currentTarget.style.background = "#4f46e5")}>
+              style={{ padding: "0.625rem 1.5rem", background: passwordProcessing ? "#cbd5e1" : "#003366", color: "#fff", border: "none", borderRadius: "0.5rem", fontSize: "0.875rem", fontWeight: 600, cursor: passwordProcessing ? "not-allowed" : "pointer", display: "flex", alignItems: "center", gap: "0.5rem", transition: "background 0.15s" }}
+              onMouseEnter={e => !passwordProcessing && (e.currentTarget.style.background = "#004c99")}
+              onMouseLeave={e => !passwordProcessing && (e.currentTarget.style.background = "#003366")}>
               {passwordProcessing ? (
                 <><div style={{ width: "1rem", height: "1rem", border: "2px solid #fff", borderTopColor: "transparent", borderRadius: "50%", animation: "spin 0.7s linear infinite" }} />Updating...</>
               ) : (

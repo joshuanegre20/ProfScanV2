@@ -120,29 +120,40 @@ class SubjectController extends Controller
     /**
      * Remove the specified subject.
      */
-    public function destroy($id)
-    {
-        try {
-            $this->services->deleteSubject($id);
-            
-            return response()->json([
-                'success' => true,
-                'message' => 'Subject deleted successfully'
-            ], 200);
-            
-        } catch (ModelNotFoundException $e) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Subject not found'
-            ], 404);
-        } catch (\Exception $e) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Failed to delete subject',
-                'error' => $e->getMessage()
-            ], 500);
-        }
+public function destroy(int $id)
+{
+    try {
+        // Find the subject directly
+        $subject = \App\Models\SubjectModel::findOrFail($id);
+
+        // Delete related schedules first (if any)
+        $subject->schedules()->delete();
+
+        // Delete the subject
+        $subject->delete();
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Subject and related schedules deleted successfully'
+        ], 200);
+
+    } catch (\Illuminate\Database\Eloquent\ModelNotFoundException $e) {
+        return response()->json([
+            'success' => false,
+            'message' => 'Subject not found'
+        ], 404);
+
+    } catch (\Exception $e) {
+        \Log::error('Failed to delete subject: '.$e->getMessage(), ['id' => $id]);
+
+        return response()->json([
+            'success' => false,
+            'message' => 'Failed to delete subject',
+            'error' => $e->getMessage()
+        ], 500);
     }
+}
+    
 
     /**
      * Get subjects by department.

@@ -4,6 +4,7 @@ namespace App\Console\Commands;
 
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
+use App\Services\SocketService;
 
 class UpdateScheduleStatuses extends Command
 {
@@ -15,9 +16,9 @@ class UpdateScheduleStatuses extends Command
         $now     = now();
         $nowTime = $now->format('H:i:s');
         $today   = $now->format('Y-m-d');
+        $socket  = new SocketService();
 
-        // ── Day code ─────────────────────────────────────────────
-        $dayOfWeek = $now->dayOfWeek; // 0=Sun,1=Mon,...,6=Sat
+        $dayOfWeek = $now->dayOfWeek;
         $dayCode   = match($dayOfWeek) {
             1, 3, 5 => 'MWF',
             2, 4    => 'TTH',
@@ -31,19 +32,24 @@ class UpdateScheduleStatuses extends Command
             return 0;
         }
 
-        // ── 1. Set Upcoming → Ongoing when time starts ────────────
+        // ── 1. Set Upcoming → Ongoing ─────────────────────────────
         $ongoing = DB::table('schedule')
             ->whereIn('day', [$dayCode, 'SAT-SUN'])
             ->where('status', 'Upcoming')
             ->whereRaw('time <= ?', [$nowTime])
             ->whereRaw('(end_time IS NULL OR end_time > ?)', [$nowTime])
-            ->update([
-                'status'     => 'Ongoing',
-                'updated_at' => now(),
+            ->update(['status' => 'Ongoing', 'updated_at' => now()]);
+
+        if ($ongoing > 0) {
+            $socket->emitScheduleUpdate([
+                'type'   => 'ongoing',
+                'count'  => $ongoing,
+                'day'    => $dayCode,
+                'time'   => $nowTime,
             ]);
+        }
 
         // ── 2. Insert attendance log for newly Ongoing schedules ──
-        //    (pre-insert Absent — will be updated to Present on scan)
         $newlyOngoing = DB::table('schedule')
             ->whereIn('day', [$dayCode, 'SAT-SUN'])
             ->where('status', 'Ongoing')
@@ -75,22 +81,29 @@ class UpdateScheduleStatuses extends Command
             }
         }
 
-        // ── 3. Mark Absent 15 minutes after start if still Ongoing ─
-        //    Only mark if instructor has NOT scanned (status still Ongoing, not Present/Attended)
+        // ── 3. Mark Absent after 15min grace period ───────────────
         $gracePeriod = $now->copy()->subMinutes(15)->format('H:i:s');
 
         $absent = DB::table('schedule')
             ->whereIn('day', [$dayCode, 'SAT-SUN'])
             ->where('status', 'Ongoing')
-            ->whereRaw('time <= ?', [$gracePeriod])  // started more than 15 min ago
-            ->whereRaw('(end_time IS NULL OR end_time > ?)', [$nowTime]) // class not over yet
+            ->whereRaw('time <= ?', [$gracePeriod])
+            ->whereRaw('(end_time IS NULL OR end_time > ?)', [$nowTime])
             ->update([
                 'status'     => 'Absent',
                 'attendance' => 'Absent',
                 'updated_at' => now(),
             ]);
 
-        // Update the attendance log too
+        if ($absent > 0) {
+            $socket->emitAttendanceUpdate([
+                'type'  => 'auto_absent',
+                'count' => $absent,
+                'day'   => $dayCode,
+                'time'  => $nowTime,
+            ]);
+        }
+
         DB::table('schedule')
             ->whereIn('day', [$dayCode, 'SAT-SUN'])
             ->where('status', 'Absent')
@@ -102,7 +115,7 @@ class UpdateScheduleStatuses extends Command
                     ->where('instructor_id', $schedule->instructor_id)
                     ->where('schedule_id',   $schedule->id)
                     ->where('date',          $today)
-                    ->where('status', 'Absent') // only update if still Absent
+                    ->where('status', 'Absent')
                     ->update(['updated_at' => now()]);
             });
 

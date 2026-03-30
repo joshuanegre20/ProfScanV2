@@ -18,18 +18,23 @@ interface StaffProfile {
   profile_url?: string | null;
 }
 
-const card: React.CSSProperties = {
-  background: "#fff", borderRadius: "1rem",
-  boxShadow: "0 1px 3px rgba(0,0,0,0.08)", border: "1px solid #f3f4f6", overflow: "hidden",
+const glassCardStyle = {
+  background: "rgba(255, 255, 255, 0.95)",
+  backdropFilter: "blur(10px)",
+  borderRadius: "1rem",
+  boxShadow: "0 1px 3px rgba(0,0,0,0.08)",
+  border: "1px solid rgba(255, 255, 255, 0.2)",
+  overflow: "hidden",
 };
 
 const inputStyle: React.CSSProperties = {
-  width: "100%", padding: "0.625rem 1rem", border: "1px solid #e5e7eb",
+  width: "100%", padding: "0.625rem 1rem", border: "1px solid #e2e8f0",
   borderRadius: "0.5rem", fontSize: "0.875rem", outline: "none", boxSizing: "border-box",
+  transition: "all 0.2s",
 };
 
 const labelStyle: React.CSSProperties = {
-  display: "block", fontSize: "0.7rem", fontWeight: 600, color: "#6b7280",
+  display: "block", fontSize: "0.7rem", fontWeight: 600, color: "#475569",
   textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: "0.375rem",
 };
 
@@ -53,7 +58,6 @@ export default function ProfileTab() {
       setProfile(data);
       setForm(data ?? {});
 
-      // Fetch photo as blob if profile_url exists
       if (data?.profile_url) {
         api.get("/staff/photo/me", { responseType: "blob" })
           .then(r => setPhoto(URL.createObjectURL(r.data)))
@@ -81,7 +85,6 @@ export default function ProfileTab() {
       await api.post("/staff/avatar", formData, {
         headers: { "Content-Type": "multipart/form-data" },
       });
-      // Re-fetch profile to get new photo
       fetchProfile();
     } catch {
       alert("Failed to upload photo.");
@@ -113,10 +116,10 @@ export default function ProfileTab() {
 
   const initials = profile?.name?.split(" ").map(w => w[0]).slice(0, 2).join("").toUpperCase() ?? "S";
 
-  if (loading) return <div style={{ textAlign: "center", padding: "3rem", color: "#6b7280" }}>Loading profile...</div>;
+  if (loading) return <div style={{ textAlign: "center", padding: "3rem", color: "rgba(255,255,255,0.7)" }}>Loading profile...</div>;
 
   if (!profile) return (
-    <div style={{ ...card, padding: "3rem", textAlign: "center", color: "#9ca3af" }}>
+    <div style={{ ...glassCardStyle, padding: "3rem", textAlign: "center", color: "rgba(255,255,255,0.6)" }}>
       <p>Profile not found.</p>
     </div>
   );
@@ -125,55 +128,52 @@ export default function ProfileTab() {
     <div style={{ display: "flex", flexDirection: "column", gap: "1.5rem" }}>
 
       {success && (
-        <div style={{ background: "#dcfce7", border: "1px solid #bbf7d0", borderRadius: "0.5rem", padding: "0.875rem 1.25rem", display: "flex", gap: "0.5rem", alignItems: "center" }}>
-          <svg width="16" height="16" fill="none" stroke="#15803d" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
-          <span style={{ fontSize: "0.875rem", color: "#15803d", fontWeight: 600 }}>Profile updated successfully!</span>
+        <div style={{ background: "rgba(34, 197, 94, 0.15)", border: "1px solid rgba(34, 197, 94, 0.3)", borderRadius: "0.5rem", padding: "0.875rem 1.25rem", display: "flex", gap: "0.5rem", alignItems: "center" }}>
+          <svg width="16" height="16" fill="none" stroke="#22c55e" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
+          <span style={{ fontSize: "0.875rem", color: "#22c55e", fontWeight: 600 }}>Profile updated successfully!</span>
         </div>
       )}
 
-      <div style={card}>
+      <div style={glassCardStyle}>
         {/* Header */}
-        <div style={{ background: "linear-gradient(135deg, #312e81, #4338ca)", padding: "2rem", display: "flex", alignItems: "center", gap: "1.5rem" }}>
-
-          {/* Avatar with upload */}
+        <div style={{ background: "linear-gradient(135deg, #003366, #0055a4)", padding: "2rem", display: "flex", alignItems: "center", gap: "1.5rem", flexWrap: "wrap" }}>
           <div style={{ position: "relative", flexShrink: 0 }}>
             {photo ? (
               <img src={photo} alt="Profile"
-                style={{ width: "5rem", height: "5rem", borderRadius: "50%", objectFit: "cover", border: "3px solid rgba(255,255,255,0.3)" }} />
+                style={{ width: "5rem", height: "5rem", borderRadius: "50%", objectFit: "cover", border: "3px solid white" }} />
             ) : (
-              <div style={{ width: "5rem", height: "5rem", borderRadius: "50%", background: "rgba(255,255,255,0.15)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "2rem", fontWeight: 700, color: "#fff", border: "3px solid rgba(255,255,255,0.3)" }}>
+              <div style={{ width: "5rem", height: "5rem", borderRadius: "50%", background: "rgba(255,255,255,0.15)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "2rem", fontWeight: 700, color: "#fff", border: "3px solid #ffd700" }}>
                 {initials}
               </div>
             )}
-            {/* Upload overlay */}
             {!uploading ? (
-              <label style={{ position: "absolute", bottom: 0, right: 0, background: "#4f46e5", border: "2px solid #fff", borderRadius: "50%", width: "1.75rem", height: "1.75rem", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}
+              <label style={{ position: "absolute", bottom: 0, right: 0, background: "#ffd700", border: "2px solid #fff", borderRadius: "50%", width: "1.75rem", height: "1.75rem", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}
                 title="Change photo">
-                <svg width="12" height="12" fill="none" stroke="#fff" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"/></svg>
+                <svg width="12" height="12" fill="none" stroke="#003366" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"/></svg>
                 <input type="file" accept="image/*" onChange={handlePhotoChange} style={{ display: "none" }} />
               </label>
             ) : (
-              <div style={{ position: "absolute", bottom: 0, right: 0, background: "#4f46e5", border: "2px solid #fff", borderRadius: "50%", width: "1.75rem", height: "1.75rem", display: "flex", alignItems: "center", justifyContent: "center" }}>
-                <div style={{ width: "0.75rem", height: "0.75rem", border: "2px solid #fff", borderTopColor: "transparent", borderRadius: "50%", animation: "spin 0.7s linear infinite" }} />
+              <div style={{ position: "absolute", bottom: 0, right: 0, background: "#ffd700", border: "2px solid #fff", borderRadius: "50%", width: "1.75rem", height: "1.75rem", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                <div style={{ width: "0.75rem", height: "0.75rem", border: "2px solid #003366", borderTopColor: "transparent", borderRadius: "50%", animation: "spin 0.7s linear infinite" }} />
               </div>
             )}
           </div>
 
           <div style={{ flex: 1 }}>
             <h2 style={{ fontSize: "1.25rem", fontWeight: 700, color: "#fff" }}>{profile.name}</h2>
-            <p style={{ color: "#a5b4fc", fontSize: "0.875rem", marginTop: "0.25rem" }}>{profile.email}</p>
+            <p style={{ color: "#bfdbfe", fontSize: "0.875rem", marginTop: "0.25rem" }}>{profile.email}</p>
             <div style={{ display: "flex", gap: "0.5rem", marginTop: "0.5rem", flexWrap: "wrap" }}>
-              <span style={{ fontSize: "0.7rem", fontWeight: 700, padding: "0.2rem 0.6rem", borderRadius: "9999px", background: "rgba(255,255,255,0.15)", color: "#fff" }}>
+              <span style={{ fontSize: "0.7rem", fontWeight: 700, padding: "0.2rem 0.6rem", borderRadius: "9999px", background: "rgba(255,255,255,0.15)", color: "#ffd700" }}>
                 {profile.staff_id}
               </span>
-              <span style={{ fontSize: "0.7rem", fontWeight: 700, padding: "0.2rem 0.6rem", borderRadius: "9999px", background: profile.status === "Active" ? "#dcfce7" : "#fee2e2", color: profile.status === "Active" ? "#15803d" : "#dc2626" }}>
+              <span style={{ fontSize: "0.7rem", fontWeight: 700, padding: "0.2rem 0.6rem", borderRadius: "9999px", background: profile.status === "Active" ? "rgba(34, 197, 94, 0.2)" : "rgba(239, 68, 68, 0.2)", color: profile.status === "Active" ? "#4ade80" : "#f87171" }}>
                 {profile.status}
               </span>
             </div>
           </div>
 
           <button onClick={() => { setEditing(!editing); if (editing) setForm(profile); }}
-            style={{ background: "rgba(255,255,255,0.1)", border: "1px solid rgba(255,255,255,0.2)", color: "#fff", padding: "0.5rem 1rem", borderRadius: "0.5rem", cursor: "pointer", fontSize: "0.875rem", fontWeight: 500 }}
+            style={{ background: "rgba(255,255,255,0.1)", border: "1px solid rgba(255,255,255,0.2)", color: "#fff", padding: "0.5rem 1rem", borderRadius: "0.5rem", cursor: "pointer", fontSize: "0.875rem", fontWeight: 500, transition: "all 0.2s" }}
             onMouseEnter={e => (e.currentTarget.style.background = "rgba(255,255,255,0.2)")}
             onMouseLeave={e => (e.currentTarget.style.background = "rgba(255,255,255,0.1)")}>
             {editing ? "Cancel" : "Edit Profile"}
@@ -183,7 +183,7 @@ export default function ProfileTab() {
         {/* Details */}
         <div style={{ padding: "1.5rem 2rem" }}>
           {editing ? (
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: "1.25rem", color:'black' }}>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: "1.25rem" }}>
               {[
                 { label: "Full Name",  key: "name",       type: "text" },
                 { label: "Email",      key: "email",      type: "email" },
@@ -207,8 +207,8 @@ export default function ProfileTab() {
                 <textarea value={form.address ?? ""} onChange={e => setForm({ ...form, address: e.target.value })} rows={2} style={{ ...inputStyle, resize: "vertical" }} />
               </div>
               <div style={{ gridColumn: "1 / -1", display: "flex", justifyContent: "flex-end", gap: "0.75rem" }}>
-                <button onClick={() => { setEditing(false); setForm(profile); }} style={{ padding: "0.5rem 1.25rem", border: "1px solid #e5e7eb", borderRadius: "0.5rem", background: "none", fontSize: "0.875rem", cursor: "pointer", color: "#6b7280" }}>Cancel</button>
-                <button onClick={handleSave} disabled={saving} style={{ padding: "0.5rem 1.25rem", background: saving ? "#c7d2fe" : "#4f46e5", color: "#fff", border: "none", borderRadius: "0.5rem", fontSize: "0.875rem", fontWeight: 600, cursor: saving ? "not-allowed" : "pointer" }}>
+                <button onClick={() => { setEditing(false); setForm(profile); }} style={{ padding: "0.5rem 1.25rem", border: "1px solid #e2e8f0", borderRadius: "0.5rem", background: "none", fontSize: "0.875rem", cursor: "pointer", color: "#475569" }}>Cancel</button>
+                <button onClick={handleSave} disabled={saving} style={{ padding: "0.5rem 1.25rem", background: saving ? "#94a3b8" : "#003366", color: "#fff", border: "none", borderRadius: "0.5rem", fontSize: "0.875rem", fontWeight: 600, cursor: saving ? "not-allowed" : "pointer" }}>
                   {saving ? "Saving..." : "Save Changes"}
                 </button>
               </div>
@@ -227,7 +227,7 @@ export default function ProfileTab() {
               ].map(({ label, value }) => (
                 <div key={label}>
                   <p style={{ ...labelStyle, marginBottom: "0.2rem" }}>{label}</p>
-                  <p style={{ fontSize: "0.875rem", color: "#1f2937", fontWeight: 500 }}>{value}</p>
+                  <p style={{ fontSize: "0.875rem", color: "#1e293b", fontWeight: 500 }}>{value}</p>
                 </div>
               ))}
             </div>

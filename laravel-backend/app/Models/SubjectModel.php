@@ -14,4 +14,8 @@ class SubjectModel extends Model
     'subject',
     'department'
     ];
+     public function schedules()
+    {
+        return $this->hasMany(\App\Models\ScheduleModel::class, 'subject_code', 'subject_code');
+    }
 }

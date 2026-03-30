@@ -1,0 +1,18 @@
+# Laravel storage symlink — causes Docker build context errors
+laravel-backend/public/storage
+
+# Node modules
+frontend-react/node_modules
+web-socket/node_modules
+
+# Git
+.git
+.gitignore
+
+# Logs
+laravel-backend/storage/logs/*.log
+
+# Local env files
+laravel-backend/.env
+frontend-react/.env
+frontend-react/.env.local

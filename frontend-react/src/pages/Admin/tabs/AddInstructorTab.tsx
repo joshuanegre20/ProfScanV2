@@ -21,18 +21,27 @@ interface Department {
 const defaultForm = {
   name: "", email: "", password: "", password_confirmation: "",
   employee_id: "", address: "", age: "", gender: "", contact_no: "",
-  birth_date: "", department: "", specialization: "", // Keep specialization field
+  birth_date: "", department: "", specialization: "",
+};
+
+const glassCardStyle = {
+  background: "#fff",
+  borderRadius: "1rem",
+  boxShadow: "0 1px 3px rgba(0,0,0,0.08)",
+  border: "1px solid #e2e8f0",
+  overflow: "hidden",
 };
 
 const inputStyle: React.CSSProperties = {
-  width: "100%", padding: "0.625rem 1rem", border: "1px solid #e5e7eb",
-  borderRadius: "0.5rem", fontSize: "0.875rem", color: "#1f2937",
+  width: "100%", padding: "0.625rem 1rem", border: "1px solid #e2e8f0",
+  borderRadius: "0.5rem", fontSize: "0.875rem", color: "#1e293b",
   outline: "none", boxSizing: "border-box", fontFamily: "inherit",
   transition: "border-color 0.15s, box-shadow 0.15s",
+  background: "#fff",
 };
 
 const labelStyle: React.CSSProperties = {
-  display: "block", fontSize: "0.7rem", fontWeight: 600, color: "#6b7280",
+  display: "block", fontSize: "0.7rem", fontWeight: 600, color: "#64748b",
   textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: "0.375rem",
 };
 
@@ -52,27 +61,21 @@ export default function AddInstructorTab() {
     employeeId: string;
   } | null>(null);
   
-  // State for subjects
   const [subjects, setSubjects] = useState<Subject[]>([]);
   const [loadingSubjects, setLoadingSubjects] = useState(false);
   const [filteredSubjects, setFilteredSubjects] = useState<Subject[]>([]);
-  
-  // New state for departments
   const [departments, setDepartments] = useState<Department[]>([]);
   const [loadingDepartments, setLoadingDepartments] = useState(false);
 
-  // Fetch departments and subjects when component mounts
   useEffect(() => {
     fetchDepartments();
     fetchSubjects();
   }, []);
 
-  // Filter subjects when department changes
   useEffect(() => {
     if (form.department) {
       const filtered = subjects.filter(s => s.department === form.department);
       setFilteredSubjects(filtered);
-      // Clear specialization if current selection doesn't match department
       if (form.specialization) {
         const currentSubject = subjects.find(s => s.subject === form.specialization);
         if (currentSubject && currentSubject.department !== form.department) {
@@ -88,21 +91,15 @@ export default function AddInstructorTab() {
     setLoadingDepartments(true);
     try {
       const response = await api.get("/admin/departments");
-      console.log("Departments response:", response.data);
-      
-      // Handle different response structures
       if (Array.isArray(response.data)) {
         setDepartments(response.data);
       } else if (response.data.data && Array.isArray(response.data.data)) {
         setDepartments(response.data.data);
-      } else if (response.data.departments && Array.isArray(response.data.departments)) {
-        setDepartments(response.data.departments);
       } else {
         setDepartments([]);
       }
     } catch (err) {
       console.error("Failed to fetch departments:", err);
-      // Fallback to empty array
       setDepartments([]);
     } finally {
       setLoadingDepartments(false);
@@ -113,13 +110,10 @@ export default function AddInstructorTab() {
     setLoadingSubjects(true);
     try {
       const response = await api.get("/admin/subjects");
-      // Handle different response structures
       if (Array.isArray(response.data)) {
         setSubjects(response.data);
       } else if (response.data.data && Array.isArray(response.data.data)) {
         setSubjects(response.data.data);
-      } else if (response.data.subjects && Array.isArray(response.data.subjects)) {
-        setSubjects(response.data.subjects);
       } else {
         setSubjects([]);
       }
@@ -152,10 +146,16 @@ export default function AddInstructorTab() {
     setSuccessData(null);
 
     try {
+      // FIX: Generate QR code with SMALL data (just the employee ID)
+      // Don't store the QR image, store the plain text/ID instead
+      const qrPayload = form.employee_id; // Just the employee ID, not the QR image
+      
+      // Generate QR code image for display only
       const qrBase64 = await QRCode.toDataURL(form.employee_id, {
         width: 300,
         margin: 2,
-        color: { dark: "#1f2937", light: "#ffffff" },
+        color: { dark: "#003366", light: "#ffffff" },
+        errorCorrectionLevel: 'L' // Low error correction for more capacity
       });
 
       const formData = new FormData();
@@ -163,7 +163,9 @@ export default function AddInstructorTab() {
         if (value !== "") formData.append(key, value);
       });
       if (selectedFile) formData.append("photo", selectedFile);
-      formData.append("qr_payload", qrBase64);
+      
+      // Store the simple payload (employee ID) instead of the QR image
+      formData.append("qr_payload", qrPayload);
 
       await api.post("/admin/instructors", formData, {
         headers: { "Content-Type": "multipart/form-data" },
@@ -195,7 +197,6 @@ export default function AddInstructorTab() {
     link.click();
   };
 
-  // Group subjects by department for better organization
   const subjectsByDepartment = subjects.reduce((acc, subject) => {
     if (!acc[subject.department]) {
       acc[subject.department] = [];
@@ -204,77 +205,38 @@ export default function AddInstructorTab() {
     return acc;
   }, {} as Record<string, Subject[]>);
 
-  // ── Success Screen ─────────────────────────────────────────────────────────
   if (successData) {
     return (
       <div style={{ display: "flex", alignItems: "center", justifyContent: "center", minHeight: "60vh" }}>
-        <div style={{
-          background: "#fff", borderRadius: "1rem",
-          boxShadow: "0 20px 40px rgba(0,0,0,0.12)", border: "1px solid #f3f4f6",
-          padding: "2.5rem", maxWidth: "420px", width: "100%", textAlign: "center",
-        }}>
-          <div style={{
-            width: "3.5rem", height: "3.5rem", background: "#dcfce7", borderRadius: "50%",
-            display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 1rem",
-          }}>
-            <svg width="24" height="24" fill="none" stroke="#16a34a" viewBox="0 0 24 24">
+        <div style={{ ...glassCardStyle, padding: "2.5rem", maxWidth: "420px", width: "100%", textAlign: "center" }}>
+          <div style={{ width: "3.5rem", height: "3.5rem", background: "#dcfce7", borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 1rem" }}>
+            <svg width="24" height="24" fill="none" stroke="#15803d" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
             </svg>
           </div>
-
-          <h2 style={{ fontSize: "1.125rem", fontWeight: 700, color: "#1f2937", marginBottom: "0.25rem" }}>
-            Instructor Added!
-          </h2>
-          <p style={{ fontSize: "0.875rem", color: "#6b7280", marginBottom: "0.5rem" }}>
+          <h2 style={{ fontSize: "1.125rem", fontWeight: 700, color: "#1e293b", marginBottom: "0.25rem" }}>Instructor Added!</h2>
+          <p style={{ fontSize: "0.875rem", color: "#64748b", marginBottom: "0.5rem" }}>
             QR code generated for <strong>{successData.instructorName}</strong>
           </p>
-          <p style={{
-            fontSize: "0.75rem", color: "#4f46e5", background: "#eef2ff",
-            borderRadius: "0.375rem", padding: "0.25rem 0.75rem",
-            display: "inline-block", marginBottom: "1.5rem", fontWeight: 600,
-          }}>
+          <p style={{ fontSize: "0.75rem", color: "#003366", background: "#eef2ff", borderRadius: "0.375rem", padding: "0.25rem 0.75rem", display: "inline-block", marginBottom: "1.5rem", fontWeight: 600 }}>
             {successData.employeeId}
           </p>
-
-          <div style={{
-            display: "inline-block", padding: "1rem", background: "#f9fafb",
-            border: "2px dashed #e5e7eb", borderRadius: "0.75rem", marginBottom: "1rem",
-          }}>
-            <img
-              src={successData.qrBase64}
-              alt="Instructor QR Code"
-              style={{ width: "200px", height: "200px", display: "block" }}
-            />
+          <div style={{ display: "inline-block", padding: "1rem", background: "#f8fafc", border: "2px dashed #e2e8f0", borderRadius: "0.75rem", marginBottom: "1rem" }}>
+            <img src={successData.qrBase64} alt="Instructor QR Code" style={{ width: "200px", height: "200px", display: "block" }} />
           </div>
-
-          <p style={{ fontSize: "0.75rem", color: "#9ca3af", marginBottom: "1.5rem" }}>
-            Scan to retrieve Employee ID · Saved to instructor's profile
-          </p>
-
+          <p style={{ fontSize: "0.75rem", color: "#94a3b8", marginBottom: "1.5rem" }}>Scan to retrieve Employee ID · Saved to instructor's profile</p>
           <div style={{ display: "flex", gap: "0.75rem", justifyContent: "center" }}>
-            <button
-              onClick={handleDownloadQR}
-              style={{
-                padding: "0.625rem 1.25rem", background: "#4f46e5", color: "#fff",
-                border: "none", borderRadius: "0.5rem", fontSize: "0.875rem", fontWeight: 600,
-                cursor: "pointer", display: "flex", alignItems: "center", gap: "0.4rem",
-              }}
-              onMouseEnter={e => (e.currentTarget.style.background = "#4338ca")}
-              onMouseLeave={e => (e.currentTarget.style.background = "#4f46e5")}
-            >
+            <button onClick={handleDownloadQR} style={{ padding: "0.625rem 1.25rem", background: "#003366", color: "#fff", border: "none", borderRadius: "0.5rem", fontSize: "0.875rem", fontWeight: 600, cursor: "pointer", display: "flex", alignItems: "center", gap: "0.4rem", transition: "background 0.2s" }}
+              onMouseEnter={e => (e.currentTarget.style.background = "#004c99")}
+              onMouseLeave={e => (e.currentTarget.style.background = "#003366")}>
               <svg width="15" height="15" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
               </svg>
               Download QR
             </button>
-            <button
-              onClick={() => setSuccessData(null)}
-              style={{
-                padding: "0.625rem 1.25rem", background: "none",
-                border: "1px solid #e5e7eb", borderRadius: "0.5rem",
-                fontSize: "0.875rem", fontWeight: 600, color: "#6b7280", cursor: "pointer",
-              }}
-            >
+            <button onClick={() => setSuccessData(null)} style={{ padding: "0.625rem 1.25rem", background: "none", border: "1px solid #e2e8f0", borderRadius: "0.5rem", fontSize: "0.875rem", fontWeight: 600, color: "#64748b", cursor: "pointer", transition: "background 0.2s" }}
+              onMouseEnter={e => (e.currentTarget.style.background = "#f8fafc")}
+              onMouseLeave={e => (e.currentTarget.style.background = "none")}>
               Add Another
             </button>
           </div>
@@ -283,37 +245,35 @@ export default function AddInstructorTab() {
     );
   }
 
-  // ── Form ───────────────────────────────────────────────────────────────────
   return (
     <div style={{ fontFamily: "ui-sans-serif, system-ui, sans-serif" }}>
 
       {/* Header */}
-      <div style={{ background: "linear-gradient(135deg, #312e81, #4338ca)", color: "#fff", borderRadius: "0.75rem", padding: "1.5rem 2rem", marginBottom: "1.5rem", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+      <div style={{ background: "linear-gradient(135deg, #003366, #0055a4)", color: "#fff", borderRadius: "0.75rem", padding: "1.5rem 2rem", marginBottom: "1.5rem", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
         <div style={{ display: "flex", flexDirection: "column", alignItems: "center", flex: 1, gap: "0.5rem", textAlign: "center" }}>
-          <img src="/images/tmclogo2.png" alt="TMC" style={{ width: "3rem", height: "3rem", objectFit: "contain" }} onError={e => (e.currentTarget.style.display = "none")} />
+          <div style={{ width: "3rem", height: "3rem", borderRadius: "50%", background: "rgba(255,255,255,0.2)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "1.5rem" }}>
+            👨‍🏫
+          </div>
           <div>
             <h1 style={{ fontSize: "1.25rem", fontWeight: 700 }}>Admin Portal</h1>
-            <p style={{ color: "#a5b4fc", fontSize: "0.8rem" }}>Add New Instructor</p>
+            <p style={{ color: "#bfdbfe", fontSize: "0.8rem" }}>Add New Instructor</p>
           </div>
         </div>
-        
       </div>
 
       {/* Form Card */}
-      <div style={{ background: "#fff", borderRadius: "1rem", boxShadow: "0 1px 3px rgba(0,0,0,0.08)", border: "1px solid #f3f4f6", overflow: "hidden" }}>
+      <div style={glassCardStyle}>
 
         {/* Avatar Header */}
-        <div style={{ padding: "1.5rem 2rem", borderBottom: "1px solid #f3f4f6", display: "flex", alignItems: "center", gap: "1.5rem" }}>
+        <div style={{ padding: "1.5rem 2rem", borderBottom: "1px solid #e2e8f0", display: "flex", alignItems: "center", gap: "1.5rem" }}>
           <div style={{ position: "relative", flexShrink: 0 }}>
-            <div style={{ width: "6rem", height: "6rem", borderRadius: "50%", overflow: "hidden", border: "4px solid #e0e7ff", boxShadow: "0 2px 8px rgba(0,0,0,0.1)" }}>
+            <div style={{ width: "6rem", height: "6rem", borderRadius: "50%", overflow: "hidden", boxShadow: "0 2px 8px rgba(0,0,0,0.1)" }}>
               <img src={photo} alt="Profile" style={{ width: "100%", height: "100%", objectFit: "cover" }}
                 onError={() => setPhoto("/images/default-avatar.png")} />
             </div>
-            <label
-              style={{ position: "absolute", bottom: "-2px", right: "-2px", background: "#4f46e5", color: "#fff", padding: "0.375rem", borderRadius: "50%", cursor: "pointer", boxShadow: "0 2px 6px rgba(0,0,0,0.2)" }}
-              onMouseEnter={e => (e.currentTarget.style.background = "#4338ca")}
-              onMouseLeave={e => (e.currentTarget.style.background = "#4f46e5")}
-            >
+            <label style={{ position: "absolute", bottom: "-2px", right: "-2px", background: "#003366", color: "#fff", padding: "0.375rem", borderRadius: "50%", cursor: "pointer", boxShadow: "0 2px 6px rgba(0,0,0,0.2)", transition: "background 0.2s" }}
+              onMouseEnter={e => (e.currentTarget.style.background = "#004c99")}
+              onMouseLeave={e => (e.currentTarget.style.background = "#003366")}>
               <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
               </svg>
@@ -321,9 +281,9 @@ export default function AddInstructorTab() {
             </label>
           </div>
           <div>
-            <h2 style={{ fontSize: "1rem", fontWeight: 700, color: "#1f2937" }}>Instructor Information</h2>
-            <p style={{ fontSize: "0.8rem", color: "#9ca3af", marginTop: "0.125rem" }}>Fill in the details to create a new instructor account</p>
-            {selectedFile && <p style={{ fontSize: "0.75rem", color: "#16a34a", marginTop: "0.25rem" }}>✓ {selectedFile.name}</p>}
+            <h2 style={{ fontSize: "1rem", fontWeight: 700, color: "#1e293b" }}>Instructor Information</h2>
+            <p style={{ fontSize: "0.8rem", color: "#64748b", marginTop: "0.125rem" }}>Fill in the details to create a new instructor account</p>
+            {selectedFile && <p style={{ fontSize: "0.75rem", color: "#22c55e", marginTop: "0.25rem" }}>✓ {selectedFile.name}</p>}
           </div>
         </div>
 
@@ -332,7 +292,7 @@ export default function AddInstructorTab() {
 
           {/* Account Details */}
           <section>
-            <h3 style={{ fontSize: "0.7rem", fontWeight: 700, color: "#4f46e5", textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: "1rem" }}>Account Details</h3>
+            <h3 style={{ fontSize: "0.7rem", fontWeight: 700, color: "#003366", textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: "1rem" }}>Account Details</h3>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: "1.25rem" }}>
               {[
                 { key: "employee_id", label: "Employee ID *", placeholder: "TMC-2024-001", required: true },
@@ -351,7 +311,7 @@ export default function AddInstructorTab() {
                     placeholder={field.placeholder}
                     required={field.required}
                     style={inputStyle}
-                    onFocus={e => (e.currentTarget.style.boxShadow = "0 0 0 3px rgba(99,102,241,0.15)")}
+                    onFocus={e => (e.currentTarget.style.boxShadow = "0 0 0 3px rgba(0,51,102,0.15)")}
                     onBlur={e => (e.currentTarget.style.boxShadow = "none")}
                   />
                   {errors[field.key] && <p style={errorStyle}>{errors[field.key]}</p>}
@@ -360,18 +320,17 @@ export default function AddInstructorTab() {
             </div>
           </section>
 
-          <hr style={{ border: "none", borderTop: "1px solid #f3f4f6" }} />
+          <hr style={{ border: "none", borderTop: "1px solid #e2e8f0" }} />
 
           {/* Academic Info */}
           <section>
-            <h3 style={{ fontSize: "0.7rem", fontWeight: 700, color: "#4f46e5", textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: "1rem" }}>Academic Information</h3>
+            <h3 style={{ fontSize: "0.7rem", fontWeight: 700, color: "#003366", textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: "1rem" }}>Academic Information</h3>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: "1.25rem" }}>
               
-              {/* Department dropdown - from database */}
               <div>
                 <label style={labelStyle}>
                   Department *
-                  {loadingDepartments && <span style={{ marginLeft: "0.5rem", color: "#9ca3af", fontSize: "0.7rem" }}>(Loading...)</span>}
+                  {loadingDepartments && <span style={{ marginLeft: "0.5rem", color: "#94a3b8", fontSize: "0.7rem" }}>(Loading...)</span>}
                 </label>
                 <select 
                   value={form.department} 
@@ -391,18 +350,12 @@ export default function AddInstructorTab() {
                   )}
                 </select>
                 {errors.department && <p style={errorStyle}>{errors.department}</p>}
-                {departments.length === 0 && !loadingDepartments && (
-                  <p style={{ fontSize: "0.7rem", color: "#f59e0b", marginTop: "0.25rem" }}>
-                    ⚠️ No departments found. Please add departments first in the Add Department tab.
-                  </p>
-                )}
               </div>
               
-              {/* Specialization dropdown - shows subjects based on selected department */}
               <div style={{ gridColumn: "1 / -1" }}>
                 <label style={labelStyle}>
                   Specialization (Subject) *
-                  {loadingSubjects && <span style={{ marginLeft: "0.5rem", color: "#9ca3af", fontSize: "0.7rem" }}>(Loading...)</span>}
+                  {loadingSubjects && <span style={{ marginLeft: "0.5rem", color: "#94a3b8", fontSize: "0.7rem" }}>(Loading...)</span>}
                   {!form.department && <span style={{ marginLeft: "0.5rem", color: "#f59e0b", fontSize: "0.7rem" }}>Select department first</span>}
                 </label>
                 
@@ -415,15 +368,11 @@ export default function AddInstructorTab() {
                     disabled={loadingSubjects}
                   >
                     <option value="">Select a subject specialization</option>
-                    
-                    {/* Show filtered subjects for the selected department */}
                     {filteredSubjects.map(subject => (
                       <option key={subject.id} value={subject.subject}>
                         {subject.subject_code} — {subject.subject}
                       </option>
                     ))}
-                    
-                    {/* If no subjects available for this department */}
                     {filteredSubjects.length === 0 && !loadingSubjects && (
                       <option value="" disabled>No subjects available for this department</option>
                     )}
@@ -435,32 +384,23 @@ export default function AddInstructorTab() {
                     onChange={e => set("specialization", e.target.value)}
                     placeholder="Please select a department first"
                     disabled
-                    style={{ ...inputStyle, background: "#f9fafb", color: "#9ca3af", cursor: "not-allowed" }}
+                    style={{ ...inputStyle, background: "#f8fafc", color: "#94a3b8", cursor: "not-allowed" }}
                   />
                 )}
-                
                 {errors.specialization && <p style={errorStyle}>{errors.specialization}</p>}
-                
-                {/* Helper text */}
-                {form.department && filteredSubjects.length === 0 && !loadingSubjects && (
-                  <p style={{ fontSize: "0.7rem", color: "#f59e0b", marginTop: "0.25rem" }}>
-                    ⚠️ No subjects found for this department. Please add subjects first in the Subjects tab.
-                  </p>
-                )}
               </div>
             </div>
           </section>
 
-          <hr style={{ border: "none", borderTop: "1px solid #f3f4f6" }} />
+          <hr style={{ border: "none", borderTop: "1px solid #e2e8f0" }} />
 
           {/* Personal Info */}
           <section>
-            <h3 style={{ fontSize: "0.7rem", fontWeight: 700, color: "#4f46e5", textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: "1rem" }}>Personal Information</h3>
+            <h3 style={{ fontSize: "0.7rem", fontWeight: 700, color: "#003366", textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: "1rem" }}>Personal Information</h3>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: "1.25rem" }}>
               <div>
                 <label style={labelStyle}>Age *</label>
-                <input type="number" value={form.age} onChange={e => set("age", e.target.value)}
-                  placeholder="Enter age" required style={inputStyle} />
+                <input type="number" value={form.age} onChange={e => set("age", e.target.value)} placeholder="Enter age" required style={inputStyle} />
                 {errors.age && <p style={errorStyle}>{errors.age}</p>}
               </div>
               <div>
@@ -472,9 +412,9 @@ export default function AddInstructorTab() {
                 <label style={labelStyle}>Gender *</label>
                 <div style={{ display: "flex", gap: "1.5rem", marginTop: "0.5rem" }}>
                   {["Male", "Female"].map(g => (
-                    <label key={g} style={{ display: "flex", alignItems: "center", gap: "0.5rem", fontSize: "0.875rem", color: "#374151", cursor: "pointer" }}>
+                    <label key={g} style={{ display: "flex", alignItems: "center", gap: "0.5rem", fontSize: "0.875rem", color: "#1e293b", cursor: "pointer" }}>
                       <input type="radio" name="gender" value={g} checked={form.gender === g}
-                        onChange={e => set("gender", e.target.value)} style={{ accentColor: "#4f46e5" }} />
+                        onChange={e => set("gender", e.target.value)} style={{ accentColor: "#003366" }} />
                       {g}
                     </label>
                   ))}
@@ -483,39 +423,34 @@ export default function AddInstructorTab() {
               </div>
               <div style={{ gridColumn: "1 / -1" }}>
                 <label style={labelStyle}>Address *</label>
-                <input type="text" value={form.address} onChange={e => set("address", e.target.value)}
-                  placeholder="Enter complete address" required style={inputStyle} />
+                <input type="text" value={form.address} onChange={e => set("address", e.target.value)} placeholder="Enter complete address" required style={inputStyle} />
                 {errors.address && <p style={errorStyle}>{errors.address}</p>}
               </div>
             </div>
           </section>
 
           {/* Info Notice */}
-          <div style={{ display: "flex", alignItems: "flex-start", gap: "0.75rem", background: "#eef2ff", border: "1px solid #e0e7ff", borderRadius: "0.5rem", padding: "0.875rem 1rem" }}>
-            <svg width="16" height="16" fill="none" stroke="#818cf8" viewBox="0 0 24 24" style={{ flexShrink: 0, marginTop: "0.125rem" }}>
+          <div style={{ display: "flex", alignItems: "flex-start", gap: "0.75rem", background: "#eef2ff", border: "1px solid #e2e8f0", borderRadius: "0.5rem", padding: "0.875rem 1rem" }}>
+            <svg width="16" height="16" fill="none" stroke="#003366" viewBox="0 0 24 24" style={{ flexShrink: 0, marginTop: "0.125rem" }}>
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
             </svg>
-            <p style={{ fontSize: "0.8rem", color: "#4f46e5", lineHeight: 1.5 }}>
+            <p style={{ fontSize: "0.8rem", color: "#003366", lineHeight: 1.5 }}>
               A QR code encoding the <strong>Employee ID</strong> will be automatically generated and saved to the instructor's profile after creation.
             </p>
           </div>
 
           {/* Actions */}
           <div style={{ display: "flex", justifyContent: "flex-end", gap: "0.75rem" }}>
-            <button
-              type="button"
-              onClick={() => { setForm(defaultForm); setPhoto("/images/default-avatar.png"); setSelectedFile(null); }}
-              style={{ padding: "0.625rem 1.5rem", border: "1px solid #e5e7eb", borderRadius: "0.5rem", background: "none", fontSize: "0.875rem", fontWeight: 600, color: "#6b7280", cursor: "pointer" }}
-            >
+            <button type="button" onClick={() => { setForm(defaultForm); setPhoto("/images/default-avatar.png"); setSelectedFile(null); }}
+              style={{ padding: "0.625rem 1.5rem", border: "1px solid #e2e8f0", borderRadius: "0.5rem", background: "none", fontSize: "0.875rem", fontWeight: 600, color: "#64748b", cursor: "pointer", transition: "background 0.2s" }}
+              onMouseEnter={e => (e.currentTarget.style.background = "#f8fafc")}
+              onMouseLeave={e => (e.currentTarget.style.background = "none")}>
               Cancel
             </button>
-            <button
-              type="submit"
-              disabled={processing}
-              style={{ padding: "0.625rem 1.5rem", background: processing ? "#c7d2fe" : "#4f46e5", color: "#fff", border: "none", borderRadius: "0.5rem", fontSize: "0.875rem", fontWeight: 600, cursor: processing ? "not-allowed" : "pointer", display: "flex", alignItems: "center", gap: "0.5rem", transition: "background 0.15s" }}
-              onMouseEnter={e => !processing && (e.currentTarget.style.background = "#4338ca")}
-              onMouseLeave={e => !processing && (e.currentTarget.style.background = "#4f46e5")}
-            >
+            <button type="submit" disabled={processing}
+              style={{ padding: "0.625rem 1.5rem", background: processing ? "#cbd5e1" : "#003366", color: "#fff", border: "none", borderRadius: "0.5rem", fontSize: "0.875rem", fontWeight: 600, cursor: processing ? "not-allowed" : "pointer", display: "flex", alignItems: "center", gap: "0.5rem", transition: "background 0.2s" }}
+              onMouseEnter={e => !processing && (e.currentTarget.style.background = "#004c99")}
+              onMouseLeave={e => !processing && (e.currentTarget.style.background = "#003366")}>
               {processing ? (
                 <>
                   <div style={{ width: "1rem", height: "1rem", border: "2px solid #fff", borderTopColor: "transparent", borderRadius: "50%", animation: "spin 0.7s linear infinite" }} />
