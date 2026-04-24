@@ -14,6 +14,7 @@ interface AttendanceLog {
   code?: string;
   room?: string;
   day?: string;
+  block?: string;
 }
 
 interface Instructor {
@@ -112,7 +113,8 @@ export default function MyAttendanceTab() {
     const matchesSearch = !search || 
       instr?.name?.toLowerCase().includes(search.toLowerCase()) ||
       log.instructor_id.toLowerCase().includes(search.toLowerCase()) ||
-      log.subject?.toLowerCase().includes(search.toLowerCase());
+      log.subject?.toLowerCase().includes(search.toLowerCase()) ||
+      (log.block && log.block.toLowerCase().includes(search.toLowerCase()));
     const matchesInstructor = !selectedInstructor || log.instructor_id === selectedInstructor;
     return matchesSearch && matchesInstructor;
   });
@@ -156,7 +158,7 @@ export default function MyAttendanceTab() {
         <div style={{ flex: 1, minWidth: "200px" }}>
           <input
             type="text"
-            placeholder="Search by name, ID, or subject..."
+            placeholder="Search by name, ID, subject, or block..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             style={{ width: "100%", padding: "0.5rem 0.875rem", border: "1px solid #e2e8f0", borderRadius: "0.5rem", fontSize: "0.875rem", outline: "none", background: "#fff", color: "#1e293b" }}
@@ -285,7 +287,7 @@ export default function MyAttendanceTab() {
                     </div>
                   </div>
 
-                  {/* Subject & Room */}
+                  {/* Subject, Room & Block */}
                   <div style={{ marginBottom: "0.75rem", padding: "0.5rem", background: "#f8fafc", borderRadius: "0.5rem" }}>
                     <p style={{ fontSize: "0.875rem", fontWeight: 600, color: "#1e293b", marginBottom: "0.25rem" }}>
                       {log.subject || "No subject"}
@@ -296,12 +298,17 @@ export default function MyAttendanceTab() {
                       </p>
                     )}
                     {log.room && (
-                      <p style={{ fontSize: "0.7rem", color: "#64748b", display: "flex", alignItems: "center", gap: "0.25rem" }}>
+                      <p style={{ fontSize: "0.7rem", color: "#64748b", display: "flex", alignItems: "center", gap: "0.25rem", marginBottom: "0.25rem" }}>
                         <svg width="12" height="12" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
                         </svg>
                         Room {log.room}
+                      </p>
+                    )}
+                    {log.block && (
+                      <p style={{ fontSize: "0.7rem", color: "#003366", display: "flex", alignItems: "center", gap: "0.25rem", marginTop: "0.25rem", fontWeight: 500 }}>
+                        📚 Block: {log.block}
                       </p>
                     )}
                   </div>

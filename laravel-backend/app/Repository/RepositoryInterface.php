@@ -45,4 +45,7 @@ public function logActivity(array $data);
     public function getUserActivities(int $userId, int $limit = 50);
     public function getDeviceActivities(int $deviceId, int $limit = 50);
     public function getActivitiesByType(string $type, int $limit = 50);
+    public function getAllScanLogs(array $filters = []);
+   public function updateStaff(int $id, array $data);
+
 }

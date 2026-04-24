@@ -2,6 +2,7 @@
 import React, { useState, useEffect } from "react";
 import api from "../../../api/axios";
 import * as XLSX from "xlsx";
+import { useSocket } from "../../../hooks/useSocket";
 
 interface Instructor {
   id: number;
@@ -31,6 +32,7 @@ interface AttendanceLog {
   time_in: string | null;
   time_out: string | null;
   status: string | null;
+  block?: string | null;
 }
 
 const glassCardStyle = {
@@ -93,6 +95,15 @@ export default function InstructorManagerTab() {
   useEffect(() => { fetchAll(); }, []);
   useEffect(() => { if (selected) fetchLogs(selected.instructor_id); }, [selected, monthFilter]);
 
+  useSocket({
+    room: "staff",
+    onInstructorUpdate: (data) => {
+      if (data.action === "created" || data.action === "updated" || data.action === "deleted") {
+        fetchAll();
+      }
+    },
+  });
+
   const fetchAll = async () => {
     setLoadingList(true);
     try {
@@ -149,6 +160,7 @@ export default function InstructorManagerTab() {
       "Subject":  l.subject  ?? "—",
       "Code":     l.code     ?? "—",
       "Room":     l.room     ?? "—",
+      "Block":    l.block    ?? "—",
       "Time In":  l.time_in  ?? "—",
       "Time Out": l.time_out ?? "—",
       "Status":   l.status   ?? "—",
@@ -157,7 +169,7 @@ export default function InstructorManagerTab() {
     const ws = XLSX.utils.json_to_sheet(rows);
     ws["!cols"] = [
       { wch: 14 }, { wch: 10 }, { wch: 36 }, { wch: 12 },
-      { wch: 14 }, { wch: 12 }, { wch: 12 }, { wch: 12 },
+      { wch: 14 }, { wch: 8 }, { wch: 12 }, { wch: 12 }, { wch: 12 },
     ];
 
     const wb = XLSX.utils.book_new();
@@ -383,7 +395,7 @@ export default function InstructorManagerTab() {
                   <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.875rem" }}>
                     <thead>
                       <tr style={{ background: "#f8fafc" }}>
-                        {["#", "Date", "Day", "Subject", "Code", "Room", "Time In", "Time Out", "Status"].map(h => (
+                        {["#", "Date", "Day", "Subject", "Code", "Room", "Block", "Time In", "Time Out", "Status"].map(h => (
                           <th key={h} style={{ padding: "0.75rem 1rem", textAlign: "left", fontSize: "0.7rem", fontWeight: 600, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.05em", whiteSpace: "nowrap" }}>{h}</th>
                         ))}
                       </tr>
@@ -404,6 +416,13 @@ export default function InstructorManagerTab() {
                           <td style={{ padding: "0.75rem 1rem", maxWidth: "200px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: "#1e293b" }}>{log.subject || "—"}</td>
                           <td style={{ padding: "0.75rem 1rem", fontFamily: "monospace", fontSize: "0.78rem", color: "#64748b" }}>{log.code || "—"}</td>
                           <td style={{ padding: "0.75rem 1rem", color: "#64748b" }}>{log.room || "—"}</td>
+                          <td style={{ padding: "0.75rem 1rem" }}>
+                            {log.block ? (
+                              <span style={{ padding: "0.15rem 0.5rem", borderRadius: "0.25rem", fontSize: "0.7rem", fontWeight: 600, background: "#e0e7ff", color: "#4338ca" }}>
+                                {log.block}
+                              </span>
+                            ) : "—"}
+                          </td>
                           <td style={{ padding: "0.75rem 1rem", color: "#1e293b", whiteSpace: "nowrap" }}>{log.time_in || "—"}</td>
                           <td style={{ padding: "0.75rem 1rem", color: "#1e293b", whiteSpace: "nowrap" }}>{log.time_out || "—"}</td>
                           <td style={{ padding: "0.75rem 1rem" }}>

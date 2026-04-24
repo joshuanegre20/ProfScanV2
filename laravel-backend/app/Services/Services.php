@@ -177,6 +177,7 @@ class Services
             'subject' => $data['subject'] ?? null,
             'device_id' => $data['device_id'] ?? null,
             'description' => "New schedule created for: {$data['name']} - {$data['subject']}"
+            
         ]);
         
         return $schedule;
@@ -508,4 +509,31 @@ public function getSchedule(int $id)
     {
         return $this->instructorRepository->getActivitiesByType($type, $limit);
     }
+    public function getAllScanLogs(array $filters = [])
+{
+    return $this->instructorRepository->getAllScanLogs($filters);
+}
+public function updateStaff(int $id, array $data, $photo = null)
+{
+    $staff = $this->instructorRepository->findStaffById($id);
+    
+    if ($photo) {
+        if ($staff->profile_url) {
+            Storage::disk('private')->delete($staff->profile_url);
+        }
+        $data['profile_url'] = $photo->store('staff', 'private');
+    }
+
+    $staff = $this->instructorRepository->updateStaff($id, $data);
+    
+    // Log activity for staff update
+    $this->logActivity([
+        'type' => 'staff_update',
+        'name' => $staff->name,
+        'staff_id' => $staff->staff_id,
+        'description' => "Staff updated: {$staff->name}"
+    ]);
+    
+    return $staff;
+}
 }

@@ -14,6 +14,7 @@ interface AttendanceLog {
   date: string;
   day?: string;
   status: string;
+  block?: string;
 }
 
 const statusColors: Record<string, { bg: string; color: string; border: string }> = {
@@ -39,12 +40,13 @@ const exportToExcel = (logs: AttendanceLog[]) => {
     "Subject":  log.subject || "—",
     "Code":     log.code || "—",
     "Room":     log.room || "—",
+    "Block":    log.block || "—",
     "Time In":  log.time_in?.substring(0, 5) || "—",
     "Time Out": log.time_out?.substring(0, 5) || "—",
     "Status":   log.status,
   }));
   const ws = XLSX.utils.json_to_sheet(excelData);
-  ws["!cols"] = [{ wch: 14 }, { wch: 8 }, { wch: 35 }, { wch: 15 }, { wch: 12 }, { wch: 10 }, { wch: 10 }, { wch: 12 }];
+  ws["!cols"] = [{ wch: 14 }, { wch: 8 }, { wch: 35 }, { wch: 15 }, { wch: 12 }, { wch: 8 }, { wch: 10 }, { wch: 10 }, { wch: 12 }];
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, "Attendance Logs");
   XLSX.writeFile(wb, `attendance_logs_${new Date().toISOString().split("T")[0]}.xlsx`);
@@ -72,14 +74,25 @@ export default function LogsTab() {
 
   useSocket({
     room: "admin",
-    onScan:             () => fetchLogs(),
+    onLogsUpdate: (data) => {
+      // Add new log to the beginning
+      if (data && data.log) {
+        setLogs(prev => [data.log, ...prev].slice(0, 500));
+      } else {
+        fetchLogs();
+      }
+    },
     onAttendanceUpdate: () => fetchLogs(),
   });
 
   const now = new Date();
 
   const filtered = logs.filter(l => {
-    const matchSearch  = search === "" || l.subject?.toLowerCase().includes(search.toLowerCase()) || l.room?.toLowerCase().includes(search.toLowerCase()) || l.code?.toLowerCase().includes(search.toLowerCase());
+    const matchSearch  = search === "" || 
+      l.subject?.toLowerCase().includes(search.toLowerCase()) || 
+      l.room?.toLowerCase().includes(search.toLowerCase()) || 
+      l.code?.toLowerCase().includes(search.toLowerCase()) ||
+      (l.block && l.block.toLowerCase().includes(search.toLowerCase()));
     const matchMonth   = !filterMonth  || l.date?.startsWith(filterMonth);
     const matchStatus  = !filterStatus || l.status === filterStatus;
     return matchSearch && matchMonth && matchStatus;
@@ -121,7 +134,7 @@ export default function LogsTab() {
           <div style={{ position: "relative", flex: 1, minWidth: 200 }}>
             <input 
               type="text" 
-              placeholder="Search by subject, code or room..." 
+              placeholder="Search by subject, code, room, or block..." 
               value={search} 
               onChange={e => setSearch(e.target.value)}
               style={{ width: "100%", padding: "0.5rem 0.75rem 0.5rem 2rem", border: "1px solid #e2e8f0", borderRadius: "0.5rem", fontSize: "0.875rem", outline: "none" }} 
@@ -183,7 +196,7 @@ export default function LogsTab() {
             <table style={{ width: "100%", fontSize: "0.875rem", borderCollapse: "collapse" }}>
               <thead>
                 <tr style={{ background: "#f8fafc", borderBottom: "1px solid #e2e8f0" }}>
-                  {["#", "Date", "Day", "Subject", "Code", "Room", "Time In", "Time Out", "Status"].map(h => (
+                  {["#", "Date", "Day", "Subject", "Code", "Room", "Block", "Time In", "Time Out", "Status"].map(h => (
                     <th key={h} style={{ padding: "0.875rem 1rem", textAlign: "left", fontSize: "0.7rem", fontWeight: 600, color: "#475569", textTransform: "uppercase", letterSpacing: "0.05em" }}>{h}</th>
                   ))}
                 </tr>
@@ -201,6 +214,13 @@ export default function LogsTab() {
                     <td style={{ padding: "0.875rem 1rem", fontWeight: 500, color: "#1e293b" }}>{log.subject || "—"}</td>
                     <td style={{ padding: "0.875rem 1rem", fontFamily: "monospace", color: "#64748b", fontSize: "0.75rem" }}>{log.code || "—"}</td>
                     <td style={{ padding: "0.875rem 1rem", color: "#64748b" }}>{log.room || "—"}</td>
+                    <td style={{ padding: "0.875rem 1rem" }}>
+                      {log.block ? (
+                        <span style={{ padding: "2px 8px", borderRadius: "0.25rem", fontSize: "0.7rem", fontWeight: 600, background: "#e0e7ff", color: "#4338ca" }}>
+                          {log.block}
+                        </span>
+                      ) : "—"}
+                    </td>
                     <td style={{ padding: "0.875rem 1rem", color: "#64748b", whiteSpace: "nowrap" }}>{log.time_in?.substring(0, 5) || "—"}</td>
                     <td style={{ padding: "0.875rem 1rem", color: "#64748b", whiteSpace: "nowrap" }}>{log.time_out?.substring(0, 5) || "—"}</td>
                     <td style={{ padding: "0.875rem 1rem" }}>

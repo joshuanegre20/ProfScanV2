@@ -56,6 +56,11 @@ Route::middleware('auth:api')->group(function () {
     Route::get('/admin/stats/events',       [DashboardController::class, 'eventStats']);
     Route::get('/admin/recent-scans',       [AdminController::class,     'recentScans']);
 
+    
+    // New endpoint for all scan logs (analytics)
+    Route::get('/scan-logs/all', [InstructorController::class, 'getAllScanLogs']);
+
+
     // ── Admin: Activities (must be inside auth) ───────────────────
     Route::get('/admin/activities',             [ActivityController::class, 'getRecentActivities']);
     Route::get('/activities/device/{deviceId}', [ActivityController::class, 'getDeviceActivities']);
@@ -106,6 +111,7 @@ Route::middleware('auth:api')->group(function () {
     // ── Staff: Admin management ───────────────────────────────────
     Route::get('/staff',               [StaffController::class, 'index']);
     Route::post('/staff',              [StaffController::class, 'store']);
+    Route::put('/staff/{id}',         [StaffController::class, 'update']); 
     Route::delete('/staff/{id}',       [StaffController::class, 'destroy']);
     Route::patch('/staff/{id}/status', [StaffController::class, 'updateStatus']);
     Route::get('/staff/{id}/photo',    [StaffController::class, 'photo']);
@@ -126,4 +132,7 @@ Route::middleware('auth:api')->group(function () {
     Route::get('/instructor/scan-logs',        [InstructorController::class, 'myScanLogs']);
     Route::get('/instructor/attendance-logs',  [InstructorController::class, 'myAttendanceLogs']);
      Route::get('/instructor/attendance-logs-me',  [InstructorController::class, 'myAttendanceLogsMe']);
+
+ Route::get('/admin/attendance/late-records', [InstructorController::class, 'getLateAttendanceLogs']);
+   Route::get('/admin/attendance/recent-absent', [InstructorController::class, 'getRecentAbsentLogs']);
 });

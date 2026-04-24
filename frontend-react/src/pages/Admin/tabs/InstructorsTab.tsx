@@ -2,6 +2,7 @@
 import React, { useEffect, useState } from "react";
 import api from "../../../api/axios";
 import * as XLSX from "xlsx";
+import { useSocket } from "../../../hooks/useSocket";
 
 interface Props {
   setActiveTab: (tab: string) => void;
@@ -34,6 +35,7 @@ interface Schedule {
   room?: string;
   status: string;
   device_id?: number | null;
+  block?: string;
 }
 
 interface AttendanceLog {
@@ -47,6 +49,7 @@ interface AttendanceLog {
   status: string;
   duration?: string;
   day: string;
+  block?: string;
 }
 
 const departments = [
@@ -99,7 +102,7 @@ function useProtectedImage(url: string | null) {
 function InstructorAvatar({ url, name, size = 40 }: { url: string | null; name: string; size?: number }) {
   const src = useProtectedImage(url);
   if (src) {
-    return <img src={src} alt={name} style={{ width: size, height: size, borderRadius: "50%", objectFit: "cover",  }} />;
+    return <img src={src} alt={name} style={{ width: size, height: size, borderRadius: "50%", objectFit: "cover" }} />;
   }
   return (
     <div style={{ width: size, height: size, borderRadius: "50%", background: "linear-gradient(135deg, #003366, #0055a4)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
@@ -117,6 +120,7 @@ const exportToExcel = (logs: AttendanceLog[], instructorName: string) => {
     'Subject': log.subject,
     'Subject Code': log.subject_code,
     'Room': log.room || '—',
+    'Block': log.block || '—',
     'Time In': log.time?.substring(0, 5) || '—',
     'Time Out': log.end_time?.substring(0, 5) || '—',
     'Duration': log.duration || '—',
@@ -124,13 +128,209 @@ const exportToExcel = (logs: AttendanceLog[], instructorName: string) => {
   }));
 
   const ws = XLSX.utils.json_to_sheet(excelData);
-  const colWidths = [{ wch: 12 }, { wch: 30 }, { wch: 15 }, { wch: 10 }, { wch: 10 }, { wch: 10 }, { wch: 10 }, { wch: 12 }];
+  const colWidths = [{ wch: 12 }, { wch: 30 }, { wch: 15 }, { wch: 10 }, { wch: 8 }, { wch: 10 }, { wch: 10 }, { wch: 10 }, { wch: 12 }];
   ws['!cols'] = colWidths;
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, 'Attendance Logs');
   const fileName = `${instructorName.replace(/\s+/g, '_')}_attendance_${new Date().toISOString().split('T')[0]}.xlsx`;
   XLSX.writeFile(wb, fileName);
 };
+
+function EditInstructorModal({ instructor, onClose, onSuccess }: { instructor: Instructor; onClose: () => void; onSuccess: () => void }) {
+  const [formData, setFormData] = useState({
+    name: instructor.name,
+    email: instructor.email,
+    department: instructor.department,
+    specialization: instructor.specialization,
+    contact_no: instructor.contact_no || "",
+    address: instructor.address || "",
+    gender: instructor.gender || "",
+    age: instructor.age?.toString() || "",
+  });
+ 
+  const [loading, setLoading] = useState(false);
+  const [photo, setPhoto] = useState<File | null>(null);
+  const [photoPreview, setPhotoPreview] = useState<string | null>(null);
+
+  // ✅ Use protected image hook
+  const existingPhoto = useProtectedImage(instructor.profile_url);
+
+  const handlePhotoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      setPhoto(file);
+      const preview = URL.createObjectURL(file);
+      setPhotoPreview(preview);
+    }
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true);
+    try {
+      const formDataToSend = new FormData();
+      formDataToSend.append('name', formData.name);
+      formDataToSend.append('email', formData.email);
+      formDataToSend.append('department', formData.department);
+      formDataToSend.append('specialization', formData.specialization);
+      formDataToSend.append('contact_no', formData.contact_no);
+      formDataToSend.append('address', formData.address || '');
+      formDataToSend.append('gender', formData.gender);
+      formDataToSend.append('age', formData.age);
+      if (photo) formDataToSend.append('photo', photo);
+      
+      await api.post(`/admin/instructors/${instructor.id}?_method=PUT`, formDataToSend, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+      });
+      onSuccess();
+      onClose();
+    } catch (err: any) {
+      console.error("Failed to update instructor:", err);
+      alert(err.response?.data?.message || "Failed to update instructor");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const inputStyle: React.CSSProperties = {
+    width: "100%",
+    padding: "0.5rem 0.75rem",
+    border: "1px solid #e2e8f0",
+    borderRadius: "0.5rem",
+    fontSize: "0.875rem",
+    outline: "none",
+    fontFamily: "inherit",
+  };
+
+  const labelStyle: React.CSSProperties = {
+    display: "block",
+    fontSize: "0.7rem",
+    fontWeight: 600,
+    color: "#64748b",
+    textTransform: "uppercase",
+    letterSpacing: "0.05em",
+    marginBottom: "0.25rem",
+  };
+
+  return (
+    <div
+      style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", zIndex: 300, display: "flex", alignItems: "center", justifyContent: "center", padding: "1rem", color: "black" }}
+      onClick={e => { if (e.target === e.currentTarget) onClose(); }}
+    >
+      <div style={{ background: "#fff", borderRadius: "1rem", width: "100%", maxWidth: "36rem", maxHeight: "90vh", overflowY: "auto", boxShadow: "0 25px 50px rgba(0,0,0,0.25)" }}>
+        <div style={{ padding: "1.25rem 1.5rem", borderBottom: "1px solid #e2e8f0", background: "#f8fafc" }}>
+          <h2 style={{ fontSize: "1rem", fontWeight: 700, color: "#1e293b" }}>Edit Instructor</h2>
+          <p style={{ fontSize: "0.75rem", color: "#64748b", marginTop: "0.125rem" }}>Update instructor information</p>
+        </div>
+        
+        <form onSubmit={handleSubmit} style={{ padding: "1.5rem" }}>
+          {/* Photo */}
+          <div style={{ display: "flex", justifyContent: "center", marginBottom: "1.5rem" }}>
+            <div style={{ position: "relative" }}>
+              {(photoPreview || existingPhoto) ? (
+                <img
+                  src={photoPreview || existingPhoto!}
+                  alt={instructor.name}
+                  style={{ width: "80px", height: "80px", borderRadius: "50%", objectFit: "cover", border: "2px solid #003366" }}
+                />
+              ) : (
+                <div style={{ width: "80px", height: "80px", borderRadius: "50%", background: "linear-gradient(135deg, #003366, #0055a4)", display: "flex", alignItems: "center", justifyContent: "center", border: "2px solid #003366" }}>
+                  <svg width="40" height="40" fill="none" stroke="#ffd700" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                  </svg>
+                </div>
+              )}
+              <label style={{
+                position: "absolute",
+                bottom: 0,
+                right: 0,
+                background: "#003366",
+                borderRadius: "50%",
+                width: "24px",
+                height: "24px",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                cursor: "pointer"
+              }}>
+                <svg width="12" height="12" fill="none" stroke="#fff" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
+                  <circle cx="12" cy="13" r="3" />
+                </svg>
+                <input type="file" accept="image/*" onChange={handlePhotoChange} style={{ display: "none" }} />
+              </label>
+            </div>
+          </div>
+
+          {/* Basic Info */}
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1rem", marginBottom: "1rem" }}>
+            <div>
+              <label style={labelStyle}>Full Name *</label>
+              <input type="text" value={formData.name} onChange={e => setFormData({ ...formData, name: e.target.value })} style={inputStyle} required />
+            </div>
+            <div>
+              <label style={labelStyle}>Email *</label>
+              <input type="email" value={formData.email} onChange={e => setFormData({ ...formData, email: e.target.value })} style={inputStyle} required />
+            </div>
+          </div>
+
+          {/* Department & Specialization */}
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1rem", marginBottom: "1rem" }}>
+            <div>
+              <label style={labelStyle}>Department *</label>
+              <select value={formData.department} onChange={e => setFormData({ ...formData, department: e.target.value })} style={inputStyle} required>
+                <option value="">Select Department</option>
+                {departments.map(d => <option key={d.value} value={d.value}>{d.label}</option>)}
+              </select>
+            </div>
+            <div>
+              <label style={labelStyle}>Specialization *</label>
+              <input type="text" value={formData.specialization} onChange={e => setFormData({ ...formData, specialization: e.target.value })} style={inputStyle} required />
+            </div>
+          </div>
+
+          {/* Contact & Gender */}
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1rem", marginBottom: "1rem" }}>
+            <div>
+              <label style={labelStyle}>Contact No.</label>
+              <input type="text" value={formData.contact_no} onChange={e => setFormData({ ...formData, contact_no: e.target.value })} style={inputStyle} />
+            </div>
+            <div>
+              <label style={labelStyle}>Gender</label>
+              <select value={formData.gender} onChange={e => setFormData({ ...formData, gender: e.target.value })} style={inputStyle}>
+                <option value="">Select Gender</option>
+                <option value="Male">Male</option>
+                <option value="Female">Female</option>
+              </select>
+            </div>
+          </div>
+
+          {/* Age & Address */}
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1rem", marginBottom: "1rem" }}>
+            <div>
+              <label style={labelStyle}>Age</label>
+              <input type="number" value={formData.age} onChange={e => setFormData({ ...formData, age: e.target.value })} style={inputStyle} />
+            </div>
+            <div>
+              <label style={labelStyle}>Address</label>
+              <input type="text" value={formData.address} onChange={e => setFormData({ ...formData, address: e.target.value })} style={inputStyle} />
+            </div>
+          </div>
+
+          {/* Buttons */}
+          <div style={{ display: "flex", justifyContent: "flex-end", gap: "0.75rem", marginTop: "1.5rem", paddingTop: "1rem", borderTop: "1px solid #e2e8f0" }}>
+            <button type="button" onClick={onClose} style={{ padding: "0.5rem 1rem", border: "1px solid #e2e8f0", borderRadius: "0.5rem", background: "#fff", cursor: "pointer", fontSize: "0.875rem" }}>
+              Cancel
+            </button>
+            <button type="submit" disabled={loading} style={{ padding: "0.5rem 1rem", background: "#003366", color: "#fff", border: "none", borderRadius: "0.5rem", cursor: "pointer", fontSize: "0.875rem", opacity: loading ? 0.6 : 1 }}>
+              {loading ? "Saving..." : "Save Changes"}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
 
 // ── Attendance Logs Modal ─────────────────────────────────────────────────
 function AttendanceLogsModal({ instructor, onClose }: { instructor: Instructor; onClose: () => void }) {
@@ -179,9 +379,8 @@ function AttendanceLogsModal({ instructor, onClose }: { instructor: Instructor; 
       style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.55)", zIndex: 250, display: "flex", alignItems: "center", justifyContent: "center", padding: "1rem" }}
       onClick={e => { if (e.target === e.currentTarget) onClose(); }}
     >
-      <div style={{ background: "#fff", borderRadius: "1.25rem", width: "100%", maxWidth: "64rem", maxHeight: "90vh", overflowY: "auto", boxShadow: "0 25px 50px rgba(0,0,0,0.25)", display: "flex", flexDirection: "column" }}>
+      <div style={{ background: "#fff", borderRadius: "1.25rem", width: "100%", maxWidth: "90vw", maxHeight: "90vh", overflowY: "auto", boxShadow: "0 25px 50px rgba(0,0,0,0.25)", display: "flex", flexDirection: "column" }}>
 
-        {/* Header */}
         <div style={{ position: "relative", background: "linear-gradient(135deg, #003366, #0055a4)", borderRadius: "1.25rem 1.25rem 0 0", padding: "1.5rem" }}>
           <button onClick={onClose} style={{ position: "absolute", top: "1rem", right: "1rem", background: "rgba(255,255,255,0.15)", border: "none", color: "#fff", width: "2rem", height: "2rem", borderRadius: "50%", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>
             <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -200,8 +399,6 @@ function AttendanceLogsModal({ instructor, onClose }: { instructor: Instructor; 
         </div>
 
         <div style={{ padding: "1.5rem", display: "flex", flexDirection: "column", gap: "1.5rem" }}>
-
-          {/* Summary Cards */}
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: "1rem" }}>
             {[
               { label: "Total Successful Scans", value: totalScans, color: "#003366" },
@@ -216,7 +413,6 @@ function AttendanceLogsModal({ instructor, onClose }: { instructor: Instructor; 
             ))}
           </div>
 
-          {/* Filters and Export */}
           <div style={{ display: "flex", gap: "1rem", flexWrap: "wrap", justifyContent: "space-between", alignItems: "center" }}>
             <div style={{ display: "flex", gap: "1rem", flexWrap: "wrap" }}>
               <input
@@ -265,7 +461,6 @@ function AttendanceLogsModal({ instructor, onClose }: { instructor: Instructor; 
             </button>
           </div>
 
-          {/* Logs Table */}
           {loading ? (
             <div style={{ display: "flex", justifyContent: "center", padding: "3rem" }}>
               <div style={{ width: "2rem", height: "2rem", border: "2px solid #e2e8f0", borderTopColor: "#003366", borderRadius: "50%", animation: "spin 0.7s linear infinite" }} />
@@ -279,7 +474,7 @@ function AttendanceLogsModal({ instructor, onClose }: { instructor: Instructor; 
             </div>
           ) : (
             <div style={{ overflowX: "auto", border: "1px solid #e2e8f0", borderRadius: "0.75rem" }}>
-              <table style={{ width: "100%", fontSize: "0.875rem", borderCollapse: "collapse" }}>
+              <table style={{ width: "100%", fontSize: "0.875rem", borderCollapse: "collapse", minWidth: "800px" }}>
                 <thead style={{ background: "#f8fafc", borderBottom: "1px solid #e2e8f0" }}>
                   <tr>
                     <th style={{ padding: "0.75rem 1rem", textAlign: "left", fontSize: "0.7rem", fontWeight: 600, color: "#64748b", textTransform: "uppercase" }}>Date/Time</th>
@@ -287,6 +482,7 @@ function AttendanceLogsModal({ instructor, onClose }: { instructor: Instructor; 
                     <th style={{ padding: "0.75rem 1rem", textAlign: "left", fontSize: "0.7rem", fontWeight: 600, color: "#64748b", textTransform: "uppercase" }}>Subject</th>
                     <th style={{ padding: "0.75rem 1rem", textAlign: "left", fontSize: "0.7rem", fontWeight: 600, color: "#64748b", textTransform: "uppercase" }}>Code</th>
                     <th style={{ padding: "0.75rem 1rem", textAlign: "left", fontSize: "0.7rem", fontWeight: 600, color: "#64748b", textTransform: "uppercase" }}>Room</th>
+                    <th style={{ padding: "0.75rem 1rem", textAlign: "left", fontSize: "0.7rem", fontWeight: 600, color: "#64748b", textTransform: "uppercase" }}>Block</th>
                     <th style={{ padding: "0.75rem 1rem", textAlign: "left", fontSize: "0.7rem", fontWeight: 600, color: "#64748b", textTransform: "uppercase" }}>Time</th>
                     <th style={{ padding: "0.75rem 1rem", textAlign: "left", fontSize: "0.7rem", fontWeight: 600, color: "#64748b", textTransform: "uppercase" }}>Status</th>
                   </tr>
@@ -303,6 +499,13 @@ function AttendanceLogsModal({ instructor, onClose }: { instructor: Instructor; 
                       <td style={{ padding: "0.75rem 1rem", color: "#1e293b" }}>{log.subject}</td>
                       <td style={{ padding: "0.75rem 1rem", fontFamily: "monospace", color: "#64748b" }}>{log.subject_code}</td>
                       <td style={{ padding: "0.75rem 1rem", color: "#64748b" }}>{log.room || "—"}</td>
+                      <td style={{ padding: "0.75rem 1rem" }}>
+                        {log.block ? (
+                          <span style={{ padding: "0.125rem 0.5rem", borderRadius: "0.25rem", fontSize: "0.7rem", fontWeight: 600, background: "#e0e7ff", color: "#4338ca" }}>
+                            {log.block}
+                          </span>
+                        ) : "—"}
+                      </td>
                       <td style={{ padding: "0.75rem 1rem", color: "#64748b" }}>
                         {log.time}{log.end_time ? ` – ${log.end_time}` : ""}
                       </td>
@@ -316,9 +519,9 @@ function AttendanceLogsModal({ instructor, onClose }: { instructor: Instructor; 
                 </tbody>
               </table>
               
-              <div style={{ padding: "0.75rem 1rem", borderTop: "1px solid #e2e8f0", background: "#fafafa", fontSize: "0.75rem", color: "#64748b", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <div style={{ padding: "0.75rem 1rem", borderTop: "1px solid #e2e8f0", background: "#fafafa", fontSize: "0.75rem", color: "#64748b", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "0.5rem" }}>
                 <span>Showing {filteredLogs.length} of {logs.length} successful scans</span>
-                <div style={{ display: "flex", gap: "1rem" }}>
+                <div style={{ display: "flex", gap: "1rem", flexWrap: "wrap" }}>
                   <button
                     onClick={() => { setFilterMonth(""); setFilterStatus(""); }}
                     style={{ background: "none", border: "none", color: "#003366", cursor: "pointer", fontSize: "0.75rem" }}
@@ -366,7 +569,6 @@ function InstructorProfileModal({ instructor, onClose, onViewAttendance }: { ins
     { label: "Contact No", value: instructor.contact_no ?? "—" },
     { label: "Gender", value: instructor.gender ?? "—" },
     { label: "Age", value: instructor.age ? String(instructor.age) : "—" },
-    { label: "Join Date", value: instructor.join_date },
     { label: "Address", value: instructor.address ?? "—" },
   ];
 
@@ -377,7 +579,6 @@ function InstructorProfileModal({ instructor, onClose, onViewAttendance }: { ins
     >
       <div style={{ background: "#fff", borderRadius: "1.25rem", width: "100%", maxWidth: "42rem", maxHeight: "90vh", overflowY: "auto", boxShadow: "0 25px 50px rgba(0,0,0,0.25)", display: "flex", flexDirection: "column" }}>
 
-        {/* Banner */}
         <div style={{ position: "relative", background: "linear-gradient(135deg, #003366, #0055a4)", borderRadius: "1.25rem 1.25rem 0 0", padding: "1.5rem 1.5rem 3.5rem" }}>
           <button onClick={onClose} style={{ position: "absolute", top: "1rem", right: "1rem", background: "rgba(255,255,255,0.15)", border: "none", color: "#fff", width: "2rem", height: "2rem", borderRadius: "50%", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>
             <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -394,7 +595,7 @@ function InstructorProfileModal({ instructor, onClose, onViewAttendance }: { ins
             <div>
               <h2 style={{ fontSize: "1.125rem", fontWeight: 700, color: "#fff" }}>{instructor.name}</h2>
               <p style={{ color: "#bfdbfe", fontSize: "0.8rem", marginTop: "0.25rem" }}>{instructor.specialization}</p>
-              <div style={{ display: "flex", gap: "0.5rem", marginTop: "0.5rem" }}>
+              <div style={{ display: "flex", gap: "0.5rem", marginTop: "0.5rem", flexWrap: "wrap" }}>
                 <span style={{ fontSize: "0.65rem", fontWeight: 700, padding: "0.2rem 0.6rem", borderRadius: "9999px", background: "rgba(255,255,255,0.2)", color: "#ffd700" }}>
                   {instructor.department}
                 </span>
@@ -407,7 +608,6 @@ function InstructorProfileModal({ instructor, onClose, onViewAttendance }: { ins
         </div>
 
         <div style={{ padding: "1.5rem", display: "flex", flexDirection: "column", gap: "1.5rem", marginTop: "-1rem" }}>
-
           <button
             onClick={onViewAttendance}
             style={{
@@ -435,7 +635,6 @@ function InstructorProfileModal({ instructor, onClose, onViewAttendance }: { ins
             View Attendance Logs
           </button>
 
-          {/* Basic Info Card */}
           <div style={{ background: "#fff", borderRadius: "1rem", border: "1px solid #e2e8f0", boxShadow: "0 1px 3px rgba(0,0,0,0.06)", overflow: "hidden" }}>
             <div style={{ padding: "0.875rem 1.25rem", borderBottom: "1px solid #e2e8f0", display: "flex", alignItems: "center", gap: "0.5rem" }}>
               <svg width="15" height="15" fill="none" stroke="#003366" viewBox="0 0 24 24">
@@ -453,7 +652,6 @@ function InstructorProfileModal({ instructor, onClose, onViewAttendance }: { ins
             </div>
           </div>
 
-          {/* Schedules Card */}
           <div style={{ background: "#fff", borderRadius: "1rem", border: "1px solid #e2e8f0", boxShadow: "0 1px 3px rgba(0,0,0,0.06)", overflow: "hidden" }}>
             <div style={{ padding: "0.875rem 1.25rem", borderBottom: "1px solid #e2e8f0", display: "flex", alignItems: "center", gap: "0.5rem" }}>
               <svg width="15" height="15" fill="none" stroke="#003366" viewBox="0 0 24 24">
@@ -475,12 +673,12 @@ function InstructorProfileModal({ instructor, onClose, onViewAttendance }: { ins
             ) : (
               <div style={{ padding: "0.75rem 1.25rem", display: "flex", flexDirection: "column", gap: "0.625rem" }}>
                 {sortedSchedules.map(sched => (
-                  <div key={sched.id} style={{ display: "flex", alignItems: "center", gap: "0.875rem", padding: "0.75rem", background: "#f8fafc", borderRadius: "0.625rem", border: "1px solid #e2e8f0" }}>
+                  <div key={sched.id} style={{ display: "flex", alignItems: "center", gap: "0.875rem", padding: "0.75rem", background: "#f8fafc", borderRadius: "0.625rem", border: "1px solid #e2e8f0", flexWrap: "wrap" }}>
                     <div style={{ minWidth: "3.5rem", textAlign: "center", background: dayColors[sched.day]?.bg ?? "#eef2ff", borderRadius: "0.5rem", padding: "0.3rem 0.5rem" }}>
                       <p style={{ fontSize: "0.65rem", fontWeight: 700, color: dayColors[sched.day]?.color ?? "#003366", textTransform: "uppercase" }}>{sched.day}</p>
                     </div>
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <p style={{ fontSize: "0.825rem", fontWeight: 600, color: "#1e293b", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                    <div style={{ flex: 1, minWidth: "150px" }}>
+                      <p style={{ fontSize: "0.825rem", fontWeight: 600, color: "#1e293b", wordBreak: "break-word" }}>
                         {sched.subject}
                         <span style={{ fontSize: "0.7rem", color: "#64748b", fontFamily: "monospace", marginLeft: "0.4rem" }}>({sched.subject_code})</span>
                       </p>
@@ -488,6 +686,11 @@ function InstructorProfileModal({ instructor, onClose, onViewAttendance }: { ins
                         {sched.time}{sched.end_time ? ` – ${sched.end_time}` : ""}
                         {sched.room && <span> · {sched.room}</span>}
                       </p>
+                      {sched.block && (
+                        <p style={{ fontSize: "0.65rem", color: "#003366", marginTop: "0.125rem", fontWeight: 500 }}>
+                          📚 Block: {sched.block}
+                        </p>
+                      )}
                     </div>
                     <span style={{ fontSize: "0.65rem", fontWeight: 700, padding: "0.2rem 0.5rem", borderRadius: "9999px", background: statusColors[sched.status]?.bg ?? "#f1f5f9", color: statusColors[sched.status]?.color ?? "#64748b", whiteSpace: "nowrap" }}>
                       {sched.status}
@@ -518,6 +721,8 @@ export default function InstructorsTab({ setActiveTab }: Props) {
   const [loading, setLoading] = useState(false);
   const [selected, setSelected] = useState<Instructor | null>(null);
   const [showAttendanceLogs, setShowAttendanceLogs] = useState(false);
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [editingInstructor, setEditingInstructor] = useState<Instructor | null>(null);
 
   const fetchInstructors = () => {
     setLoading(true);
@@ -529,12 +734,26 @@ export default function InstructorsTab({ setActiveTab }: Props) {
 
   useEffect(() => { fetchInstructors(); }, []);
 
+  useSocket({
+    room: "admin",
+    onInstructorUpdate: (data) => {
+      if (data.action === "created" || data.action === "updated" || data.action === "deleted") {
+        fetchInstructors();
+      }
+    },
+  });
+
   const handleDelete = async (id: number) => {
     if (!confirm("Are you sure you want to delete this instructor?")) return;
     try {
       await api.delete(`/admin/instructors/${id}`);
       fetchInstructors();
     } catch { alert("Failed to delete instructor."); }
+  };
+
+  const handleEdit = (instructor: Instructor) => {
+    setEditingInstructor(instructor);
+    setShowEditModal(true);
   };
 
   const handleToggleStatus = async (instructor: Instructor) => {
@@ -579,8 +798,19 @@ export default function InstructorsTab({ setActiveTab }: Props) {
         />
       )}
 
+      {showEditModal && editingInstructor && (
+        <EditInstructorModal
+          instructor={editingInstructor}
+          onClose={() => {
+            setShowEditModal(false);
+            setEditingInstructor(null);
+          }}
+          onSuccess={fetchInstructors}
+        />
+      )}
+
       {/* Header */}
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1.25rem", padding: "1.5rem 1.5rem 0 1.5rem" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1.25rem", padding: "1.5rem 1.5rem 0 1.5rem", flexWrap: "wrap", gap: "1rem" }}>
         <div>
           <h2 style={{ fontSize: "1rem", fontWeight: 600, color: "#1e293b" }}>Instructors List</h2>
           <p style={{ fontSize: "0.8rem", color: "#64748b", marginTop: "0.125rem" }}>
@@ -589,9 +819,9 @@ export default function InstructorsTab({ setActiveTab }: Props) {
         </div>
         <button
           onClick={() => setActiveTab("add-instructor")}
-          style={{ background: "#003366", color: "#fff", border: "none", padding: "0.5rem 1rem", borderRadius: "0.5rem", fontSize: "0.875rem", fontWeight: 500, cursor: "pointer", display: "flex", alignItems: "center", gap: "0.4rem", transition: "background 0.2s" }}
+          style={{ background: "#fbbf24", color: "#fff", border: "none", padding: "0.5rem 1rem", borderRadius: "0.5rem", fontSize: "0.875rem", fontWeight: 500, cursor: "pointer", display: "flex", alignItems: "center", gap: "0.4rem", transition: "background 0.2s" }}
           onMouseEnter={e => (e.currentTarget.style.background = "#004c99")}
-          onMouseLeave={e => (e.currentTarget.style.background = "#003366")}
+          onMouseLeave={e => (e.currentTarget.style.background = "#fbbf24")}
         >
           <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
@@ -601,7 +831,7 @@ export default function InstructorsTab({ setActiveTab }: Props) {
       </div>
 
       {/* Filters */}
-      <div style={{ display: "flex", gap: "0.75rem", marginBottom: "1.25rem", flexWrap: "wrap", padding: "0 1.5rem" }}>
+      <div style={{ display: "flex", gap: "0.75rem", marginBottom: "1.25rem", flexWrap: "wrap", padding: "0 1.5rem", color: "black" }}>
         <input 
           type="text" 
           placeholder="Search by name, email, or ID..." 
@@ -617,18 +847,23 @@ export default function InstructorsTab({ setActiveTab }: Props) {
 
       {/* Table */}
       {loading ? (
-        <div style={{ display: "flex", justifyContent: "center", padding: "2.5rem", color: "#94a3b8", gap: "0.75rem", alignItems: "center" }}>
+        <div style={{ display: "flex", justifyContent: "center", padding: "2.5rem", color: "#94a3b8", gap: "0.75rem", alignItems: "center", }}>
           <div style={{ width: "1.25rem", height: "1.25rem", border: "2px solid #003366", borderTopColor: "transparent", borderRadius: "50%", animation: "spin 0.7s linear infinite" }} />
           Loading instructors...
         </div>
       ) : (
         <div style={{ overflowX: "auto", padding: "0 1.5rem 1.5rem 1.5rem" }}>
-          <table style={{ width: "100%", fontSize: "0.875rem", borderCollapse: "collapse" }}>
+          <table style={{ width: "100%", fontSize: "0.875rem", borderCollapse: "collapse", minWidth: "1000px" }}>
             <thead>
               <tr style={{ background: "#f8fafc", color: "#64748b", fontSize: "0.7rem", textTransform: "uppercase", letterSpacing: "0.05em" }}>
-                {["Profile", "Instructor ID", "Name", "Email", "Department", "Specialization", "Status", "Join Date", "Actions"].map(h => (
-                  <th key={h} style={{ padding: "0.75rem 1rem", textAlign: "left", fontWeight: 600, whiteSpace: "nowrap" }}>{h}</th>
-                ))}
+                <th style={{ padding: "0.75rem 1rem", textAlign: "left", fontWeight: 600, whiteSpace: "nowrap" }}>Profile</th>
+                <th style={{ padding: "0.75rem 1rem", textAlign: "left", fontWeight: 600, whiteSpace: "nowrap" }}>Instructor ID</th>
+                <th style={{ padding: "0.75rem 1rem", textAlign: "left", fontWeight: 600, whiteSpace: "nowrap" }}>Name</th>
+                <th style={{ padding: "0.75rem 1rem", textAlign: "left", fontWeight: 600, whiteSpace: "nowrap" }}>Email</th>
+                <th style={{ padding: "0.75rem 1rem", textAlign: "left", fontWeight: 600, whiteSpace: "nowrap" }}>Department</th>
+                <th style={{ padding: "0.75rem 1rem", textAlign: "left", fontWeight: 600, whiteSpace: "nowrap" }}>Specialization</th>
+                <th style={{ padding: "0.75rem 1rem", textAlign: "left", fontWeight: 600, whiteSpace: "nowrap" }}>Status</th>
+                <th style={{ padding: "0.75rem 1rem", textAlign: "left", fontWeight: 600, whiteSpace: "nowrap" }}>Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -660,13 +895,21 @@ export default function InstructorsTab({ setActiveTab }: Props) {
                       {instructor.status}
                     </span>
                   </td>
-                  <td style={{ padding: "0.75rem 1rem", color: "#64748b", whiteSpace: "nowrap" }}>{instructor.join_date}</td>
                   <td style={{ padding: "0.75rem 1rem" }} onClick={e => e.stopPropagation()}>
-                    <div style={{ display: "flex", gap: "0.75rem" }}>
-                    
+                    <div style={{ display: "flex", gap: "0.75rem", flexWrap: "wrap" }}>
+                      <button
+                        onClick={() => handleEdit(instructor)}
+                        style={{ background: "none", border: "none", cursor: "pointer", fontWeight: 500, fontSize: "0.875rem", color: "#003366", padding: "0.25rem 0.5rem", borderRadius: "0.375rem", transition: "background 0.2s" }}
+                        onMouseEnter={e => (e.currentTarget.style.background = "#e0e7ff")}
+                        onMouseLeave={e => (e.currentTarget.style.background = "transparent")}
+                      >
+                        Edit
+                      </button>
                       <button
                         onClick={() => handleDelete(instructor.id)}
-                        style={{ background: "none", border: "none", cursor: "pointer", fontWeight: 500, fontSize: "0.875rem", color: "#ef4444" }}
+                        style={{ background: "none", border: "none", cursor: "pointer", fontWeight: 500, fontSize: "0.875rem", color: "#ef4444", padding: "0.25rem 0.5rem", borderRadius: "0.375rem", transition: "background 0.2s" }}
+                        onMouseEnter={e => (e.currentTarget.style.background = "#fee2e2")}
+                        onMouseLeave={e => (e.currentTarget.style.background = "transparent")}
                       >
                         Delete
                       </button>
@@ -675,7 +918,7 @@ export default function InstructorsTab({ setActiveTab }: Props) {
                 </tr>
               )) : (
                 <tr>
-                  <td colSpan={9} style={{ textAlign: "center", padding: "2.5rem", color: "#94a3b8", fontSize: "0.875rem" }}>
+                  <td colSpan={8} style={{ textAlign: "center", padding: "2.5rem", color: "#94a3b8", fontSize: "0.875rem" }}>
                     No instructors found
                   </td>
                 </tr>

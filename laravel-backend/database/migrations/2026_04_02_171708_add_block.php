@@ -11,9 +11,9 @@ return new class extends Migration
      */
     public function up(): void
     {
-        Schema::table('activities', function (Blueprint $table) {
+        Schema::table('schedule', function (Blueprint $table) {
             //
-            $table->string('device_id')->nullable();
+            $table->string("block")->after('device_id');
         });
     }
 
@@ -22,7 +22,7 @@ return new class extends Migration
      */
     public function down(): void
     {
-        Schema::table('activities', function (Blueprint $table) {
+        Schema::table('schedule', function (Blueprint $table) {
             //
         });
     }

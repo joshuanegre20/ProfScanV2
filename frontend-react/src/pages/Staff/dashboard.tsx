@@ -93,10 +93,29 @@ export default function StaffDashboard() {
     <div
       style={{
         minHeight: "100vh",
-        background: "#f8fafc",
+        width: "100%",
+        background: "linear-gradient(135deg, #e0e7ff 0%, #f8fafc 50%, #ffffff 100%)",
         fontFamily: "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
+        position: "relative",
       }}
     >
+      {/* Subtle blue pattern overlay */}
+      <div
+        style={{
+          position: "absolute",
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          backgroundImage: `
+            radial-gradient(circle at 10% 20%, rgba(59, 130, 246, 0.03) 0%, transparent 50%),
+            radial-gradient(circle at 90% 80%, rgba(0, 51, 102, 0.04) 0%, transparent 60%),
+            repeating-linear-gradient(45deg, rgba(59, 130, 246, 0.02) 0px, rgba(59, 130, 246, 0.02) 2px, transparent 2px, transparent 8px)
+          `,
+          pointerEvents: "none",
+        }}
+      />
+
       {/* ── Logout Confirmation Modal ── */}
       {showLogout && (
         <div
@@ -228,7 +247,6 @@ export default function StaffDashboard() {
                   height: "2.25rem",
                   borderRadius: "50%",
                   objectFit: "cover",
-                 
                 }}
               />
             ) : (
@@ -322,9 +340,9 @@ export default function StaffDashboard() {
         }
       `}</style>
 
-      <div style={{ maxWidth: "80rem", margin: "0 auto", padding: "1.5rem" }}>
+      <div style={{ maxWidth: "80rem", margin: "0 auto", padding: "1.5rem", position: "relative", zIndex: 1 }}>
         {/* ── Tab Bar ── */}
-        <div style={{ borderBottom: "1px solid #e2e8f0", marginBottom: "1.5rem" }}>
+        <div style={{ borderBottom: "1px solid #e2e8f0", marginBottom: "1.5rem", background: "rgba(255,255,255,0.6)", borderRadius: "0.5rem", padding: "0 0.5rem" }}>
           <nav style={{ display: "flex", gap: "1.5rem", overflowX: "auto" }}>
             {tabs.map((tab) => (
               <button

@@ -125,7 +125,8 @@ class Repository implements RepositoryInterface
         $query->where(function ($q) use ($filters) {
             $q->where('name', 'like', "%{$filters['search']}%")
               ->orWhere('subject', 'like', "%{$filters['search']}%")
-              ->orWhere('instructor_id', 'like', "%{$filters['search']}%");
+              ->orWhere('instructor_id', 'like', "%{$filters['search']}%")
+               ->orWhere('block', 'like', "%{$filters['search']}%"); 
         });
     }
 
@@ -382,6 +383,58 @@ public function getActivitiesByType(string $type, int $limit = 50)
         ->latest()
         ->limit($limit)
         ->get();
+}
+
+public function getAllScanLogs(array $filters = [])
+{
+    $query = DB::table('attendance_logs_db as a')
+        ->leftJoin('schedule as s', 'a.schedule_id', '=', 's.id')
+        ->select(
+            'a.id',
+            'a.date',
+            'a.day',
+            'a.subject',
+            'a.code',
+            'a.room',
+            'a.time_in',
+            'a.time_out',
+            'a.status',
+            'a.created_at',
+            'a.instructor_id',
+            's.block'
+        );
+    
+    // Apply filters
+    if (!empty($filters['from_date'])) {
+        $query->where('a.date', '>=', $filters['from_date']);
+    }
+    
+    if (!empty($filters['to_date'])) {
+        $query->where('a.date', '<=', $filters['to_date']);
+    }
+    
+    if (!empty($filters['status'])) {
+        $query->where('a.status', $filters['status']);
+    }
+    
+    return $query->orderBy('a.date', 'desc')->get();
+}
+public function updateStaff(int $id, array $data)
+{
+    $staff = $this->findStaffById($id);
+    
+    // Only update fields that are provided
+    $updateData = [];
+    if (isset($data['name'])) $updateData['name'] = $data['name'];
+    if (isset($data['email'])) $updateData['email'] = $data['email'];
+    if (isset($data['contact_no'])) $updateData['contact_no'] = $data['contact_no'];
+    if (isset($data['address'])) $updateData['address'] = $data['address'];
+    if (isset($data['gender'])) $updateData['gender'] = $data['gender'];
+    if (isset($data['age'])) $updateData['age'] = $data['age'];
+    if (isset($data['profile_url'])) $updateData['profile_url'] = $data['profile_url'];
+    
+    $staff->update($updateData);
+    return $staff->fresh();
 }
 
 

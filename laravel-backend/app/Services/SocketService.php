@@ -11,7 +11,7 @@ class SocketService
 
     public function __construct()
     {
-        $this->url = env('SOCKET_URL', 'http://127.0.0.1:3001');
+        $this->url = env('SOCKET_URL', 'http://profscan_socket:3001');
     }
 
     public function emitScan(array $data): void

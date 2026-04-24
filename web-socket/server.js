@@ -89,6 +89,60 @@ app.post("/emit/activity-update", (req, res) => {
   res.json({ success: true });
 });
 
+// POST /emit/stats-update — called when dashboard stats change
+app.post("/emit/stats-update", (req, res) => {
+  const data = req.body;
+  console.log("📊 Stats update:", data.type);
+
+  io.to("admin").emit("stats-update", data);
+
+  res.json({ success: true });
+});
+
+// POST /emit/instructor-update — called when instructor is created/updated/deleted
+app.post("/emit/instructor-update", (req, res) => {
+  const data = req.body;
+  console.log("👨‍🏫 Instructor update:", data.action, "|", data.instructor_id);
+
+  io.to("admin").emit("instructor-update", data);
+  io.to("staff").emit("instructor-update", data);
+
+  res.json({ success: true });
+});
+
+// POST /emit/staff-update — called when staff is created/updated/deleted
+app.post("/emit/staff-update", (req, res) => {
+  const data = req.body;
+  console.log("👥 Staff update:", data.action);
+
+  io.to("admin").emit("staff-update", data);
+
+  res.json({ success: true });
+});
+
+// POST /emit/device-update — called when device status/config changes
+app.post("/emit/device-update", (req, res) => {
+  const data = req.body;
+  console.log("🔌 Device update:", data.device_id, "→", data.status);
+
+  io.to("admin").emit("device-update", data);
+  io.to("staff").emit("device-update", data);
+  if (data.device_id) io.to(`device-${data.device_id}`).emit("device-update", data);
+
+  res.json({ success: true });
+});
+
+// POST /emit/logs-update — called when attendance logs are modified
+app.post("/emit/logs-update", (req, res) => {
+  const data = req.body;
+  console.log("📝 Logs update:", data.instructor_id, "→", data.status);
+
+  io.to("admin").emit("logs-update", data);
+  io.to("staff").emit("logs-update", data);
+
+  res.json({ success: true });
+});
+
 // GET /status — health check
 app.get("/status", (req, res) => {
   res.json({ status: "ok", clients });

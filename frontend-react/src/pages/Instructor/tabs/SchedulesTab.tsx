@@ -13,6 +13,7 @@ interface Schedule {
   day: string;
   room: string;
   status: "Upcoming" | "Ongoing" | "Present" | "Absent" | "Attended";
+  block?: string;
 }
 
 const statusColors: Record<string, { bg: string; color: string }> = {
@@ -190,9 +191,10 @@ export default function SchedulesTab() {
                     <div>
                       <p style={{ fontWeight: 600, color: "#1e293b", margin: "0 0 0.125rem", fontSize: "0.9rem" }}>{s.subject}</p>
                       <p style={{ fontSize: "0.7rem", fontFamily: "monospace", color: "#64748b", margin: "0 0 0.5rem" }}>{s.subject_code}</p>
-                      <div style={{ display: "flex", gap: "0.75rem", fontSize: "0.7rem", color: "#64748b" }}>
+                      <div style={{ display: "flex", gap: "0.75rem", fontSize: "0.7rem", color: "#64748b", flexWrap: "wrap" }}>
                         <span>🕐 {s.time}{s.end_time ? ` – ${s.end_time}` : ""}</span>
                         <span>🏫 {s.room}</span>
+                        {s.block && <span>📚 Block: {s.block}</span>}
                       </div>
                     </div>
                     <span style={{ fontSize: "0.65rem", fontWeight: 600, padding: "2px 8px", borderRadius: "999px", whiteSpace: "nowrap", background: statusColors[displayStatus]?.bg, color: statusColors[displayStatus]?.color }}>
@@ -210,7 +212,7 @@ export default function SchedulesTab() {
       <div style={{ background: "#fff", borderRadius: "0.75rem", boxShadow: "0 1px 3px rgba(0,0,0,0.08)", overflow: "hidden" }}>
         <div style={{ padding: "1rem", borderBottom: "1px solid #f1f5f9", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "0.75rem" }}>
           <h3 style={{ fontWeight: 600, color: "#1e293b", fontSize: "0.95rem", margin: 0 }}>All Schedules</h3>
-          <div style={{ display: "flex", gap: "0.5rem" }}>
+          <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
             <select value={dayFilter} onChange={e => setDayFilter(e.target.value)} style={inputStyle}>
               <option value="">All Days</option>
               {["MWF", "TTH", "SAT", "SUN", "SAT-SUN"].map(d => <option key={d}>{d}</option>)}
@@ -240,7 +242,7 @@ export default function SchedulesTab() {
             <table style={{ width: "100%", fontSize: "0.875rem", borderCollapse: "collapse" }}>
               <thead>
                 <tr style={{ background: "#f8fafc", borderBottom: "1px solid #e2e8f0" }}>
-                  {["Subject", "Code", "Room", "Time", "Day", "Status"].map(h => (
+                  {["Subject", "Code", "Room", "Block", "Time", "Day", "Status"].map(h => (
                     <th key={h} style={{ padding: "0.875rem 1rem", textAlign: "left", fontSize: "0.7rem", fontWeight: 600, color: "#475569", textTransform: "uppercase", letterSpacing: "0.05em" }}>{h}</th>
                   ))}
                 </tr>
@@ -254,6 +256,13 @@ export default function SchedulesTab() {
                       <td style={{ padding: "0.875rem 1rem", fontFamily: "monospace", fontSize: "0.75rem", color: "#64748b" }}>{s.subject_code}</td>
                       <td style={{ padding: "0.875rem 1rem" }}>
                         <span style={{ padding: "2px 8px", borderRadius: "999px", fontSize: "0.7rem", fontWeight: 600, background: "#e0e7ff", color: "#4338ca" }}>{s.room}</span>
+                      </td>
+                      <td style={{ padding: "0.875rem 1rem" }}>
+                        {s.block ? (
+                          <span style={{ padding: "2px 8px", borderRadius: "0.25rem", fontSize: "0.7rem", fontWeight: 600, background: "#e0e7ff", color: "#4338ca" }}>
+                            {s.block}
+                          </span>
+                        ) : "—"}
                       </td>
                       <td style={{ padding: "0.875rem 1rem", fontSize: "0.75rem", color: "#64748b", whiteSpace: "nowrap" }}>
                         {s.time}{s.end_time ? ` – ${s.end_time}` : ""}

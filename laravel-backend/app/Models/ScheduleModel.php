@@ -24,7 +24,8 @@ class ScheduleModel extends Model
     'device_id',
     'room',
     'attendance',
-    'scanned_at' 
+    'scanned_at',
+    'block'
 
     ];
 }

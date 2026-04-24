@@ -38,6 +38,10 @@ class InstructorController extends Controller
                     'role'           => $instructor->role,
                     'status'         => $instructor->status,
                     'instructor_id'  => $instructor->instructor_id,
+                    'age'            => $instructor->age,
+                    'gender'         => $instructor->gender,
+                    'contact_no'     => $instructor->contact_no,
+                    'address'        => $instructor->address,    
                     'department'     => $instructor->department,
                     'specialization' => $instructor->specialization,
                     'join_date'      => $instructor->hire_date ?? $instructor->created_at,
@@ -55,6 +59,8 @@ class InstructorController extends Controller
             ], 500);
         }
     }
+
+    
 
     public function store(Request $request)
     {
@@ -82,19 +88,23 @@ class InstructorController extends Controller
     }
 
     public function update(Request $request, int $id)
-    {
-        $data = $request->validate([
-            'name'           => 'sometimes|string|max:255',
-            'email'          => 'sometimes|email|unique:users,email,' . $id,
-            'password'       => 'nullable|min:8|confirmed',
-            'department'     => 'sometimes|string',
-            'specialization' => 'sometimes|string',
-            'photo'          => 'nullable|image|mimes:jpg,jpeg,png,webp|max:2048',
-        ]);
+{
+    $data = $request->validate([
+        'name'           => 'sometimes|string|max:255',
+        'email'          => 'sometimes|email|unique:users,email,' . $id,
+        'password'       => 'nullable|min:8|confirmed',
+        'department'     => 'sometimes|string',
+        'specialization' => 'sometimes|string',
+        'photo'          => 'nullable|image|mimes:jpg,jpeg,png,webp|max:2048',
+        'age'            => 'nullable|integer',
+        'address'        => 'nullable|string',
+        'contact_no'     => 'nullable|string',
+        'gender'         => 'nullable|in:Male,Female',
+    ]);
 
-        $instructor = $this->services->update($id, $data, $request->file('photo'));
-        return response()->json($instructor);
-    }
+    $instructor = $this->services->update($id, $data, $request->file('photo'));
+    return response()->json($instructor);
+}
 
     public function destroy(int $id)
     {
@@ -169,6 +179,110 @@ class InstructorController extends Controller
 }
 public function markAbsentManual(Request $request)
 {
+    try {
+        $request->validate([
+            'instructor_id' => 'required|string',
+            'schedule_id'   => 'required|integer',
+        ]);
+
+        $today = now()->format('Y-m-d');
+
+        // Check schedule status first
+        $schedule = DB::table('schedule')
+            ->where('id', $request->schedule_id)
+            ->first();
+
+        if (!$schedule) {
+            return response()->json(['success' => false, 'message' => 'Schedule not found'], 404);
+        }
+
+        // Only prevent if status is 'Upcoming' (future class)
+        // Allow marking absent for 'Ongoing', 'Present', etc.
+        if ($schedule->status === 'Upcoming') {
+            return response()->json([
+                'success' => false, 
+                'message' => 'Cannot mark absent for a future schedule (status: Upcoming)'
+            ], 400);
+        }
+
+        // Check if already logged today
+        $alreadyLogged = DB::table('attendance_logs_db')
+            ->where('instructor_id', $request->instructor_id)
+            ->where('schedule_id',   $request->schedule_id)
+            ->where('date',          $today)
+            ->exists();
+
+        if ($alreadyLogged) {
+            return response()->json([
+                'success' => true, 
+                'message' => 'Attendance already logged for today',
+                'already_logged' => true
+            ]);
+        }
+
+        // Insert attendance record
+        DB::table('attendance_logs_db')->insert([
+            'instructor_id' => $request->instructor_id,
+            'schedule_id'   => $request->schedule_id,
+            'room'          => $schedule->room ?? $request->room ?? null,
+            'subject'       => $schedule->subject ?? $request->subject ?? null,
+            'code'          => $schedule->subject_code ?? $request->code ?? null,
+            'day'           => $schedule->day ?? $request->day ?? null,
+            'time_in'       => null,
+            'time_out'      => $schedule->end_time ?? $request->time_out ?? null,
+            'date'          => $today,
+            'status'        => 'Absent',
+            'created_at'    => now(),
+            'updated_at'    => now(),
+        ]);
+
+        // Update schedule status to Absent
+        DB::table('schedule')
+            ->where('id', $request->schedule_id)
+            ->update([
+                'status' => 'Absent',
+                'attendance' => 'Absent',
+                'updated_at' => now()
+            ]);
+
+        // ✅ Emit socket event for real-time update
+        if (class_exists('\App\Services\SocketService')) {
+            try {
+                $socketService = new \App\Services\SocketService();
+                $socketService->emitAttendanceUpdate([
+                    'type' => 'manual_absent',
+                    'schedule_id' => $schedule->id,
+                    'instructor_id' => $schedule->instructor_id,
+                    'status' => 'Absent',
+                    'date' => $today
+                ]);
+                $socketService->emitScheduleUpdate([
+                    'schedule_id' => $schedule->id,
+                    'status' => 'Absent',
+                    'instructor_id' => $schedule->instructor_id,
+                    'subject' => $schedule->subject,
+                    'action' => 'marked_absent'
+                ]);
+            } catch (\Exception $e) {
+                \Log::warning('Socket emit failed: ' . $e->getMessage());
+            }
+        }
+
+        return response()->json([
+            'success' => true, 
+            'message' => 'Marked absent successfully',
+            'schedule_id' => $schedule->id,
+            'instructor_id' => $schedule->instructor_id
+        ]);
+        
+    } catch (\Exception $e) {
+        \Log::error('markAbsentManual error: ' . $e->getMessage());
+        return response()->json([
+            'success' => false, 
+            'message' => 'Server error: ' . $e->getMessage()
+        ], 500);
+    }
+
     try {
         $request->validate([
             'instructor_id' => 'required|string',
@@ -593,17 +707,22 @@ public function myAttendanceLogsMe(Request $request)
     $user = auth()->user();
 
     $month = $request->get('month');
-    
 
-    $query = DB::table('attendance_logs_db');
+    $query = DB::table('attendance_logs_db as a')
+        ->leftJoin('schedule as s', 'a.schedule_id', '=', 's.id')
+        ->select(
+            'a.*',
+            's.block as block'  // Get block from schedule table
+        );
 
     if ($month) {
-        $query->whereRaw("LEFT(date, 7) = ?", [$month]);
+        $query->whereRaw("LEFT(a.date, 7) = ?", [$month]);
     }
 
     $logs = $query
-        ->orderBy('date', 'desc')
-        ->orderBy('time_in', 'desc') ->where('instructor_id', $user->instructor_id)
+        ->where('a.instructor_id', $user->instructor_id)
+        ->orderBy('a.date', 'desc')
+        ->orderBy('a.time_in', 'desc')
         ->get()
         ->map(function ($log) {
             return [
@@ -617,6 +736,7 @@ public function myAttendanceLogsMe(Request $request)
                 'time_in'       => $log->time_in,
                 'time_out'      => $log->time_out,
                 'status'        => $log->status,
+                'block'         => $log->block ?? null,  // Add block to response
             ];
         });
 
@@ -742,5 +862,184 @@ public function staffAttendance(Request $request)
     ]);
 
     return response()->json($logs);
+}
+
+public function getAllScanLogs(Request $request)
+{
+    try {
+        $filters = $request->only(['from_date', 'to_date', 'status']);
+        $logs = $this->services->getAllScanLogs($filters);
+        
+        // Format the response for the chart
+        $formattedLogs = $logs->map(function ($log) {
+            return [
+                'id' => $log->id,
+                'date' => $log->date,
+                'day' => $log->day,
+                'subject' => $log->subject ?? '—',
+                'subject_code' => $log->code ?? '—',
+                'room' => $log->room ?? '—',
+                'time_in' => $log->time_in,
+                'time_out' => $log->time_out,
+                'status' => $log->status ?? 'Present',
+                'block' => $log->block,
+                'instructor_id' => $log->instructor_id,
+            ];
+        });
+        
+        return response()->json([
+            'success' => true,
+            'data' => $formattedLogs,
+            'total' => $formattedLogs->count()
+        ]);
+        
+    } catch (\Exception $e) {
+        \Log::error('Failed to fetch scan logs: ' . $e->getMessage());
+        return response()->json([
+            'success' => false,
+            'message' => 'Failed to fetch scan logs',
+            'error' => $e->getMessage()
+        ], 500);
+    }
+}
+public function getLateAttendanceLogs(Request $request)
+{
+    try {
+        $records = DB::table('attendance_logs_db')
+            ->where('status', 'Late')
+            ->orderBy('created_at', 'desc')
+            ->get();
+
+        $result = [];
+        
+        foreach ($records as $record) {
+            // Get schedule details
+            $schedule = DB::table('schedule')
+                ->where('id', $record->schedule_id)
+                ->first();
+            
+            if (!$schedule) {
+                continue;
+            }
+            
+            // Get instructor name
+            $instructor = DB::table('users')
+                ->where('instructor_id', $record->instructor_id)
+                ->first();
+            
+            // Calculate minutes late using time_in (not created_at)
+            $minutesLate = 0;
+            $scannedTime = null;
+            $fullDatetime = null;
+            
+            if ($record->time_in && $schedule->time) {
+                // Parse the time_in (e.g., "08:08:00" or "08:08")
+                $timeIn = $record->time_in;
+                if (strlen($timeIn) > 5) {
+                    $timeIn = substr($timeIn, 0, 5);
+                }
+                
+                // Parse schedule time
+                $scheduleTime = $schedule->time;
+                if (strlen($scheduleTime) > 5) {
+                    $scheduleTime = substr($scheduleTime, 0, 5);
+                }
+                
+                // Convert to minutes
+                $timeInParts = explode(':', $timeIn);
+                $scheduleParts = explode(':', $scheduleTime);
+                
+                $timeInMinutes = ($timeInParts[0] * 60) + $timeInParts[1];
+                $scheduleMinutes = ($scheduleParts[0] * 60) + $scheduleParts[1];
+                
+                $minutesLate = $timeInMinutes - $scheduleMinutes;
+                
+                if ($minutesLate < 0) {
+                    $minutesLate = 0; // Not late if scanned before schedule
+                }
+                
+                $scannedTime = $timeIn;
+                
+                // Create full datetime string for frontend
+                if ($record->date) {
+                    $fullDatetime = $record->date . ' ' . $record->time_in;
+                }
+            }
+            
+            $result[] = [
+                'id' => $record->id,
+                'instructor_id' => $record->instructor_id,
+                'name' => $instructor->name ?? 'Unknown',
+                'subject' => $schedule->subject ?? 'Unknown',
+                'minutes_late' => round($minutesLate),
+                'scanned_at' => $scannedTime,
+                'scanned_datetime' => $fullDatetime, // Add full datetime
+                'date' => $record->date, // Add the date field
+                'schedule_time' => $schedule->time,
+                'status' => $record->status,
+                'department' => $instructor->department ?? '',
+                'created_at' => $record->created_at // Add created_at
+            ];
+        }
+
+        return response()->json([
+            'success' => true,
+            'data' => $result
+        ]);
+
+    } catch (\Exception $e) {
+        \Log::error('getLateAttendanceLogs error: ' . $e->getMessage());
+        return response()->json([
+            'success' => false,
+            'message' => $e->getMessage()
+        ], 500);
+    }
+}
+public function getRecentAbsentLogs(Request $request)
+{
+    try {
+        $logs = DB::table('attendance_logs_db')
+            ->where('status', 'Absent')
+            ->orderBy('created_at', 'desc')
+            ->limit(10)
+            ->get();
+
+        $result = [];
+        
+        foreach ($logs as $log) {
+            // Get instructor name
+            $instructor = DB::table('users')
+                ->where('instructor_id', $log->instructor_id)
+                ->first();
+            
+            // Get schedule details
+            $schedule = DB::table('schedule')
+                ->where('id', $log->schedule_id)
+                ->first();
+            
+            $result[] = [
+                'id' => $log->id,
+                'instructor_id' => $log->instructor_id,
+                'name' => $instructor->name ?? 'Unknown',
+                'subject' => $schedule->subject ?? $log->subject ?? 'Unknown',
+                'department' => $instructor->department ?? '',
+                'date' => $log->date,
+                'time' => $log->time_in ? substr($log->time_in, 0, 5) : '--:--',
+                'status' => $log->status
+            ];
+        }
+
+        return response()->json([
+            'success' => true,
+            'data' => $result
+        ]);
+
+    } catch (\Exception $e) {
+        \Log::error('getRecentAbsentLogs error: ' . $e->getMessage());
+        return response()->json([
+            'success' => false,
+            'message' => $e->getMessage()
+        ], 500);
+    }
 }
 }

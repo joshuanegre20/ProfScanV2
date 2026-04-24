@@ -4,19 +4,15 @@ namespace App\Http\Controllers;
 
 use App\Http\Controllers\Controller;
 use App\Services\Services;
+use App\Services\SocketService;  // ← Add this
 use Illuminate\Http\Request;
 
 class EventsController extends Controller
 {
     public function __construct(
-        protected Services $services
+        protected Services $services,
+        protected SocketService $socket  // ← Add this
     ) {}
-
-    public function index(Request $request)
-    {
-        $events = $this->services->getEvents($request->only(['search', 'type', 'status']));
-        return response()->json($events);
-    }
 
     public function store(Request $request)
     {
@@ -33,6 +29,15 @@ class EventsController extends Controller
         ]);
 
         $event = $this->services->addEvents($data);
+        
+        // ✅ Emit socket event
+        $this->socket->emitEventUpdate([
+            'id' => $event->id,
+            'title' => $event->title,
+            'status' => $event->status,
+            'action' => 'created'
+        ]);
+        
         return response()->json($event, 201);
     }
 
@@ -51,12 +56,26 @@ class EventsController extends Controller
         ]);
 
         $event = $this->services->updateEvent($id, $data);
+        
+        // ✅ Emit socket event
+        $this->socket->emitEventUpdate([
+            'id' => $event->id,
+            'title' => $event->title,
+            'status' => $event->status,
+            'action' => 'updated'
+        ]);
+        
         return response()->json($event);
     }
-
     public function destroy(int $id)
-    {
-        $this->services->deleteEvent($id);
-        return response()->json(['message' => 'Event deleted successfully']);
-    }
+{
+    $event = $this->services->deleteEvent($id);
+
+    $this->socket->emitEventUpdate([
+        'id'     => $id,
+        'action' => 'deleted'
+    ]);
+
+    return response()->json(['message' => 'Event deleted successfully']);
+}
 }

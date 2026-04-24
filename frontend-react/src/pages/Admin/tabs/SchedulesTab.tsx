@@ -1,4 +1,4 @@
-// src/pages/Admin/tabs/SchedulesTab.tsx (Fixed initialization error)
+// src/pages/Admin/tabs/SchedulesTab.tsx
 import React, { useEffect, useState } from "react";
 import api from "../../../api/axios";
 import { useSocket } from "../../../hooks/useSocket";
@@ -55,6 +55,7 @@ interface Schedule {
   room: string;
   device_id?: number | null;
   scanned_at?: string | null;
+  block: string;
 }
 
 interface ScheduleForm {
@@ -68,6 +69,7 @@ interface ScheduleForm {
   status: Schedule["status"];
   room: string;
   device_id: string;
+  block: string;
 }
 
 // ─── Modal Types ────────────────────────────────────────────────────────────
@@ -184,6 +186,7 @@ const defaultFormValue: ScheduleForm = {
   status: "Upcoming",
   room: "",
   device_id: "",
+  block: ""
 };
 
 // ─── AppModal Component ──────────────────────────────────────────────────────
@@ -212,16 +215,13 @@ function AppModal({ modal, onClose }: { modal: ModalState; onClose: () => void }
         width: "100%", maxWidth: "26rem", overflow: "hidden",
         animation: "modalPop 0.15s ease-out",
       }}>
-        {/* Header strip */}
         <div style={{ background: v.header, padding: "1rem 1.25rem", display: "flex", alignItems: "center", gap: "0.625rem", borderBottom: "1px solid #e2e8f0" }}>
           <span style={{ fontSize: "1.1rem" }}>{v.icon}</span>
           <h3 style={{ fontSize: "0.95rem", fontWeight: 700, color: "#1e293b", margin: 0 }}>{modal.title}</h3>
         </div>
-        {/* Body */}
         <div style={{ padding: "1.25rem 1.5rem" }}>
           <p style={{ fontSize: "0.875rem", color: "#475569", lineHeight: 1.6, margin: 0 }}>{modal.message}</p>
         </div>
-        {/* Actions */}
         <div style={{ display: "flex", justifyContent: "flex-end", gap: "0.5rem", padding: "0 1.5rem 1.25rem" }}>
           {modal.type === "confirm" && (
             <button
@@ -278,8 +278,6 @@ export default function SchedulesTab() {
   const [lastUpdated, setLastUpdated] = useState<Date>(new Date());
   const [fetchError, setFetchError] = useState<string | null>(null);
   const [now, setNow] = useState(new Date());
-  const [debugInfo, setDebugInfo] = useState<string>("");
-  const [markingAllAbsent, setMarkingAllAbsent] = useState(false);
   const [form, setForm] = useState<ScheduleForm>(defaultFormValue);
 
   // ─── Modal state ────────────────────────────────────────────────────────
@@ -338,85 +336,6 @@ export default function SchedulesTab() {
     });
   }, [schedules, now]);
 
-  const handleMarkAbsent = async (s: Schedule) => {
-    showConfirm(
-      "Mark as Absent",
-      `Mark ${s.name} absent for ${s.subject}?`,
-      async () => {
-        try {
-          const today = new Date().toISOString().split("T")[0];
-          await api.post("/admin/attendance-logs/mark-absent-manual", {
-            instructor_id: s.instructor_id,
-            schedule_id: s.id,
-            room: s.room ?? null,
-            subject: s.subject ?? null,
-            code: s.subject_code ?? null,
-            day: s.day ?? null,
-            time_in: null,
-            time_out: s.end_time ?? null,
-            date: today,
-            status: "Absent",
-          });
-          fetchAll(true);
-        } catch (err: any) {
-          showAlert("Error", "Failed to mark absent.", "danger");
-        }
-      },
-      "danger",
-      "Mark Absent",
-    );
-  };
-
-  const handleMarkAllAbsent = async () => {
-    const targets = schedules.filter(s => {
-      const displayStatus = getDisplayStatus(s);
-      return isTodaySchedule(s) && (displayStatus === "Ongoing" || displayStatus === "Absent");
-    });
-
-    if (targets.length === 0) {
-      showAlert("No Schedules", "No schedules to mark absent for today.", "info");
-      return;
-    }
-
-    showConfirm(
-      "Mark All Absent",
-      `Mark ${targets.length} schedule(s) as Absent for today?`,
-      async () => {
-        setMarkingAllAbsent(true);
-        const today = new Date().toISOString().split("T")[0];
-        let success = 0;
-
-        await Promise.allSettled(targets.map(async s => {
-          try {
-            await api.post("/admin/attendance-logs/mark-absent-manual", {
-              instructor_id: s.instructor_id,
-              schedule_id: s.id,
-              room: s.room ?? null,
-              subject: s.subject ?? null,
-              code: s.subject_code ?? null,
-              day: s.day ?? null,
-              time_in: null,
-              time_out: s.end_time ?? null,
-              date: today,
-              status: "Absent",
-            });
-            success++;
-          } catch { }
-        }));
-
-        setMarkingAllAbsent(false);
-        showAlert(
-          "Done",
-          `Marked ${success} of ${targets.length} schedule(s) as Absent.`,
-          success === targets.length ? "info" : "warning",
-        );
-        fetchAll(true);
-      },
-      "danger",
-      "Mark All Absent",
-    );
-  };
-
   const fetchAll = async (isRefreshing = false) => {
     if (isRefreshing) setRefreshing(true);
     else { setLoading(true); reportedOngoing.current.clear(); }
@@ -443,16 +362,9 @@ export default function SchedulesTab() {
         } else {
           schedulesData = [];
         }
-
-        const uniqueDays = [...new Set(schedulesData.map(s => s.day))];
-        const todayGroup = getTodayGroup();
-        const todaySchedulesCount = schedulesData.filter(s => s.day === todayGroup).length;
-        setDebugInfo(`Schedules: ${schedulesData.length} total. Days: ${uniqueDays.join(", ")}. Today's group: ${todayGroup}. Today's schedules: ${todaySchedulesCount}`);
-
         setSchedules(schedulesData);
       } else {
         setSchedules([]);
-        setDebugInfo(`Schedules API error`);
       }
 
       if (devicesRes.status === "fulfilled") {
@@ -464,15 +376,6 @@ export default function SchedulesTab() {
           devicesData = data.data;
         }
         setDevices(devicesData);
-
-        const paired = devicesData.filter(d => d.paired);
-        if (paired.length > 0 && !form.device_id) {
-          setForm(prev => ({
-            ...prev,
-            device_id: paired[0].id.toString(),
-            room: paired[0].name
-          }));
-        }
       } else {
         setDevices([]);
       }
@@ -530,7 +433,6 @@ export default function SchedulesTab() {
 
     } catch (err: any) {
       setFetchError(err?.message || "Failed to load data. Please try refreshing.");
-      setDebugInfo(`Error: ${err?.message || "Unknown error"}`);
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -559,6 +461,7 @@ export default function SchedulesTab() {
       status: "Upcoming",
       room: firstDevice?.name ?? "",
       device_id: firstDevice?.id?.toString() ?? "",
+      block: ""
     });
     setEditing(null);
     setShowModal(false);
@@ -621,6 +524,7 @@ export default function SchedulesTab() {
       status: s.status ?? "Upcoming",
       room: s.room ?? "",
       device_id: s.device_id?.toString() ?? "",
+      block: s.block ?? ""
     });
     setShowModal(true);
   };
@@ -652,7 +556,8 @@ export default function SchedulesTab() {
       s.name.toLowerCase().includes(q) ||
       s.instructor_id.toLowerCase().includes(q) ||
       s.subject.toLowerCase().includes(q) ||
-      s.subject_code.toLowerCase().includes(q);
+      s.subject_code.toLowerCase().includes(q) ||
+      (s.block && s.block.toLowerCase().includes(q));
     const subjectDept = subjects.find(sub => sub.subject_code === s.subject_code)?.department;
     const displayStatus = getDisplayStatus(s);
     return matchSearch &&
@@ -699,23 +604,106 @@ export default function SchedulesTab() {
 
   const allDeviceEntries = Object.values(schedulesByDevice).filter(entry => entry.schedules.length > 0);
 
-  const absentableCount = schedules.filter(s => {
-    const displayStatus = getDisplayStatus(s);
-    return isTodaySchedule(s) && (displayStatus === "Ongoing" || displayStatus === "Absent");
-  }).length;
+// Replace the getOngoingEventForRoom function with this fixed version:
+
+const getOngoingEventForRoom = (deviceName: string): Event | null => {
+  const today = new Date().toISOString().split('T')[0];
+  const now = new Date();
+  const currentTime = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`;
+  
+  console.log(`\n🔍 ========== CHECKING DEVICE: "${deviceName}" ==========`);
+  console.log(`📅 Today (ISO string): ${today}`);
+  console.log(`🕐 Current time: ${currentTime}`);
+  
+  // Log all events for debugging
+  console.log(`📋 All events in state:`);
+  events.forEach(event => {
+    console.log(`   - "${event.title}" | Location: "${event.location}" | Date: ${event.date} to ${event.date_ends} | Status: ${event.status}`);
+  });
+  
+  const found = events.find(event => {
+    console.log(`\n   Checking event: "${event.title}"`);
+    console.log(`      Location: "${event.location}" vs "${deviceName}"`);
+    
+    // Must be ongoing status
+    if (event.status !== "Ongoing") { 
+      console.log(`      ❌ Status is ${event.status}, not Ongoing`);
+      return false;
+    }
+    
+    // Location must match device name (case-insensitive)
+    const eventLocation = event.location?.trim().toLowerCase() || "";
+    const targetDevice = deviceName.trim().toLowerCase();
+    const locationMatches = eventLocation === targetDevice;
+    
+    if (!locationMatches) {
+      console.log(`      ❌ Location mismatch: "${event.location}" !== "${deviceName}"`);
+      return false;
+    }
+    console.log(`      ✅ Location matches`);
+    
+    // Today must be within the event date range
+    console.log(`      Date check: ${today} between ${event.date} and ${event.date_ends}?`);
+    if (today < event.date || today > event.date_ends) {
+      console.log(`      ❌ Date out of range`);
+      return false;
+    }
+    console.log(`      ✅ Date in range`);
+    
+    // Normalize times
+    const rawStart = (event.start || "").substring(0, 5);
+    const rawEnd   = (event.ends  || "").substring(0, 5);
+    
+    const isAllDay = (!rawStart || rawStart === "00:00") && (!rawEnd || rawEnd === "00:00");
+    
+    if (isAllDay) {
+      console.log(`      ✅ All-day event - ACTIVE!`);
+      return true;
+    }
+    
+    // Check time range
+    if (rawEnd && currentTime > rawEnd) {
+      console.log(`      ❌ Time out of range: ${currentTime} > ${rawEnd}`);
+      return false;
+    }
+    if (rawStart && currentTime < rawStart) {
+      console.log(`      ❌ Time before start: ${currentTime} < ${rawStart}`);
+      return false;
+    }
+    
+    console.log(`      ✅ Time in range - ACTIVE!`);
+    return true;
+  });
+  
+  console.log(`\n📢 RESULT for ${deviceName}: ${found ? `FOUND "${found.title}"` : "NOT FOUND"}`);
+  return found || null;
+};
 
   const DeviceCard = ({ device, deviceSchedules }: { device: Device; deviceSchedules: Schedule[] }) => {
     const [excusing, setExcusing] = useState(false);
-    const hasOngoingEvent = events.some(e => e.status === "Ongoing");
+    
+    // Debug log for device rendering
+    console.log(`🏷️ Rendering DeviceCard for: "${device.name}"`);
+    
+    const ongoingEvent = getOngoingEventForRoom(device.name);
+    const hasOngoingEvent = !!ongoingEvent;
+    
+    console.log(`📌 Device "${device.name}" has ongoing event: ${hasOngoingEvent}`, ongoingEvent);
 
     const handleExcuseAll = async () => {
+      if (!ongoingEvent) return;
+      
       showConfirm(
         "Excuse All Today",
-        `Excuse all today's schedules for ${device.name}?`,
+        `Excuse all today's schedules for ${device.name} due to ongoing event: "${ongoingEvent.title}"?`,
         async () => {
           setExcusing(true);
           try {
-            const res = await api.post("/admin/schedules/excuse-all-today", { device_id: device.id });
+            const res = await api.post("/admin/schedules/excuse-all-today", { 
+              device_id: device.id,
+              event_id: ongoingEvent.id,
+              reason: ongoingEvent.title
+            });
             showAlert("Success", res.data.message, "info");
             fetchAll(true);
           } catch (err: any) {
@@ -782,11 +770,14 @@ export default function SchedulesTab() {
           ))}
         </div>
 
+        {/* Only show Excuse button if there's an ongoing event for THIS SPECIFIC device/room */}
         {hasOngoingEvent && (
           <div style={{ background: "#fff3cd", padding: "0.625rem 1.25rem", display: "flex", alignItems: "center", justifyContent: "space-between", borderBottom: "1px solid #ffeeba" }}>
             <div style={{ display: "flex", alignItems: "center", gap: "0.4rem" }}>
               <span style={{ fontSize: "0.9rem" }}>📅</span>
-              <span style={{ fontSize: "0.75rem", fontWeight: 600, color: "#856404" }}>Event ongoing today</span>
+              <span style={{ fontSize: "0.75rem", fontWeight: 600, color: "#856404" }}>
+                Event ongoing: "{ongoingEvent?.title}" at {device.name}
+              </span>
             </div>
             <button onClick={handleExcuseAll} disabled={excusing} style={{ background: excusing ? "#d1d5db" : "#856404", color: "#fff", border: "none", padding: "0.3rem 0.875rem", borderRadius: "0.375rem", fontSize: "0.72rem", fontWeight: 600, cursor: excusing ? "not-allowed" : "pointer", display: "flex", alignItems: "center", gap: "0.3rem" }}>
               {excusing ? (<><div style={{ width: "0.75rem", height: "0.75rem", border: "2px solid #fff", borderTopColor: "transparent", borderRadius: "50%", animation: "spin 0.7s linear infinite" }} />Excusing...</>) : "📝 Excuse All Today"}
@@ -807,8 +798,6 @@ export default function SchedulesTab() {
             <div style={{ display: "flex", flexDirection: "column", gap: "0.625rem", maxHeight: "280px", overflowY: "auto" }}>
               {todaySchedules.map(s => {
                 const displayStatus = getDisplayStatus(s);
-                // Only show Mark Absent button for Ongoing or Absent
-                const canMarkAbsent = displayStatus === "Ongoing" || displayStatus === "Absent";
                 return (
                   <div key={s.id} style={{
                     padding: "0.75rem", borderRadius: "0.5rem",
@@ -825,6 +814,11 @@ export default function SchedulesTab() {
                       <div style={{ flex: 1 }}>
                         <p style={{ fontWeight: 600, fontSize: "0.8rem", color: "#1e293b" }}>{s.name}</p>
                         <p style={{ fontSize: "0.75rem", color: "#475569", marginTop: "0.1rem" }}>{s.subject}</p>
+                        {s.block && (
+                          <p style={{ fontSize: "0.7rem", color: "#003366", marginTop: "0.1rem", fontWeight: 500 }}>
+                            Block: {s.block}
+                          </p>
+                        )}
                         <div style={{ display: "flex", alignItems: "center", gap: "0.4rem", marginTop: "0.25rem" }}>
                           <svg width="12" height="12" fill="none" stroke="#64748b" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
                           <span style={{ fontSize: "0.7rem", color: "#64748b" }}>{s.time}{s.end_time ? ` – ${s.end_time}` : ""}</span>
@@ -856,12 +850,6 @@ export default function SchedulesTab() {
                         }}>
                           {statusEmoji[displayStatus]} {displayStatus}
                         </span>
-                        {/* Only show for Ongoing or Absent — not Present or Upcoming */}
-                        {canMarkAbsent && (
-                          <button onClick={() => handleMarkAbsent(s)} style={{ background: "#fee2e2", border: "1px solid #fecaca", cursor: "pointer", color: "#dc2626", fontSize: "0.6rem", fontWeight: 600, padding: "0.125rem 0.5rem", borderRadius: "0.375rem", marginTop: "0.125rem" }}>
-                            ❌ Mark Absent
-                          </button>
-                        )}
                       </div>
                     </div>
                   </div>
@@ -893,6 +881,9 @@ export default function SchedulesTab() {
                     <div>
                       <p style={{ fontWeight: 500, fontSize: "0.75rem", color: "#1e293b" }}>{s.name}</p>
                       <p style={{ fontSize: "0.65rem", color: "#64748b" }}>{s.subject}</p>
+                      {s.block && (
+                        <p style={{ fontSize: "0.6rem", color: "#003366", marginTop: "0.1rem" }}>Block: {s.block}</p>
+                      )}
                     </div>
                   </div>
                   <div style={{ textAlign: "right" }}>
@@ -921,13 +912,31 @@ export default function SchedulesTab() {
       <AppModal modal={modal} onClose={closeModal} />
 
       {/* Debug Info Panel */}
-      {debugInfo && (
-        <div style={{ background: "#eef2ff", padding: "0.75rem 1rem", borderRadius: "0.5rem", fontSize: "0.75rem", color: "#1e293b", border: "1px solid #e2e8f0", marginBottom: "0.5rem" }}>
-          <strong>📅 Today's Date:</strong> {new Date().toLocaleDateString("en-PH", { weekday: "long", month: "long", day: "numeric" })}
-          <br />
-          <strong>🏷️ Today's Group:</strong> {todayGroup}
-        </div>
-      )}
+      <div style={{ background: "#eef2ff", padding: "0.75rem 1rem", borderRadius: "0.5rem", fontSize: "0.75rem", color: "#1e293b", border: "1px solid #e2e8f0", marginBottom: "0.5rem" }}>
+        <strong>📅 Today's Date:</strong> {new Date().toLocaleDateString("en-PH", { weekday: "long", month: "long", day: "numeric" })}
+        <br />
+        <strong>🏷️ Today's Group:</strong> {todayGroup}
+        <br />
+        <strong>📊 Total Schedules:</strong> {schedules.length}
+        <br />
+        <strong>📋 Total Events:</strong> {events.length}
+        <br />
+        <strong>📱 Paired Devices:</strong> {pairedDevices.map(d => d.name).join(", ")}
+      </div>
+
+      {/* Ongoing Events Debug Panel */}
+      <div style={{ background: "#fef3c7", padding: "0.75rem 1rem", borderRadius: "0.5rem", fontSize: "0.75rem", color: "#92400e", border: "1px solid #fde68a", marginBottom: "0.5rem" }}>
+        <strong>🔍 Ongoing Events:</strong><br />
+        {events.filter(e => e.status === "Ongoing").length > 0 ? (
+          events.filter(e => e.status === "Ongoing").map(e => (
+            <div key={e.id}>
+              📅 <strong>{e.title}</strong> at <strong>"{e.location}"</strong> from {e.start} to {e.ends} ({e.date} to {e.date_ends})
+            </div>
+          ))
+        ) : (
+          <div>⚠️ No ongoing events at this moment</div>
+        )}
+      </div>
 
       {/* Header */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: "1rem" }}>
@@ -942,29 +951,6 @@ export default function SchedulesTab() {
           )}
         </div>
         <div style={{ display: "flex", gap: "0.5rem", alignItems: "center", flexWrap: "wrap" }}>
-          {absentableCount > 0 && (
-            <button
-              onClick={handleMarkAllAbsent}
-              disabled={markingAllAbsent}
-              style={{
-                display: "flex", alignItems: "center", gap: "0.4rem",
-                padding: "0.5rem 0.875rem",
-                background: markingAllAbsent ? "#e2e8f0" : "#fef2f2",
-                border: markingAllAbsent ? "1px solid #e2e8f0" : "1px solid #fecaca",
-                borderRadius: "0.5rem",
-                color: markingAllAbsent ? "#94a3b8" : "#1e293b",
-                fontSize: "0.8rem", fontWeight: 600,
-                cursor: markingAllAbsent ? "not-allowed" : "pointer",
-              }}
-            >
-              {markingAllAbsent ? (
-                <>
-                  <div style={{ width: "0.75rem", height: "0.75rem", border: "2px solid #94a3b8", borderTopColor: "transparent", borderRadius: "50%", animation: "spin 0.7s linear infinite" }} />
-                  Marking...
-                </>
-              ) : `❌ Mark All Absent (${absentableCount})`}
-            </button>
-          )}
           <button onClick={() => fetchAll(true)} disabled={refreshing}
             style={{ background: refreshing ? "#e2e8f0" : "#fff", color: refreshing ? "#94a3b8" : "#003366", border: "1px solid #e2e8f0", padding: "0.5rem 1rem", borderRadius: "0.5rem", fontSize: "0.875rem", fontWeight: 500, cursor: refreshing ? "not-allowed" : "pointer", display: "flex", alignItems: "center", gap: "0.4rem" }}>
             <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{ animation: refreshing ? "spin 0.7s linear infinite" : "none" }}>
@@ -1017,7 +1003,7 @@ export default function SchedulesTab() {
           {view === "table" && (
             <>
               <div style={{ display: "flex", gap: "0.75rem", flexWrap: "wrap" }}>
-                <input type="text" placeholder="Search by name, ID, subject..." value={search} onChange={e => setSearch(e.target.value)} style={{ ...inputStyle, flex: 1, minWidth: "180px" }} />
+                <input type="text" placeholder="Search by name, ID, subject, block..." value={search} onChange={e => setSearch(e.target.value)} style={{ ...inputStyle, flex: 1, minWidth: "180px" }} />
                 <select value={dayFilter} onChange={e => setDayFilter(e.target.value)} style={{ ...inputStyle, width: "auto" }}>
                   <option value="">All Days</option>
                   {groupOrder.map(d => <option key={d}>{d}</option>)}
@@ -1037,7 +1023,7 @@ export default function SchedulesTab() {
                     <table style={{ width: "100%", fontSize: "0.875rem", borderCollapse: "collapse" }}>
                       <thead>
                         <tr style={{ background: "#f8fafc", borderBottom: "1px solid #e2e8f0" }}>
-                          {["#", "Device", "Instructor ID", "Name", "Subject", "Code", "Dept", "Time", "Day", "Attendance", "Status", "Actions"].map(h => (
+                          {["Device", "Block", "Instructor ID", "Subject", "Code", "Dept", "Time", "Day", "Attendance", "Status", "Actions"].map(h => (
                             <th key={h} style={{ padding: "0.875rem 1.25rem", textAlign: "left", fontSize: "0.7rem", fontWeight: 600, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.05em", whiteSpace: "nowrap" }}>{h}</th>
                           ))}
                         </tr>
@@ -1049,15 +1035,27 @@ export default function SchedulesTab() {
                           const displayStatus = getDisplayStatus(s);
                           return (
                             <tr key={s.id} style={{ borderBottom: "1px solid #e2e8f0" }} onMouseEnter={e => (e.currentTarget.style.background = "#f8fafc")} onMouseLeave={e => (e.currentTarget.style.background = "transparent")}>
-                              <td style={{ padding: "0.875rem 1.25rem", color: "#94a3b8", fontSize: "0.75rem" }}>{idx + 1}</td>
                               <td style={{ padding: "0.875rem 1.25rem" }}>
                                 <div style={{ display: "flex", alignItems: "center", gap: "0.4rem" }}>
                                   <span style={{ width: "6px", height: "6px", borderRadius: "50%", background: dev?.status === "online" ? "#22c55e" : "#d1d5db", display: "inline-block" }} />
                                   <span style={{ fontSize: "0.8rem", fontWeight: 500, color: "#1e293b" }}>{dev?.name ?? s.room ?? "—"}</span>
                                 </div>
                               </td>
+                              <td style={{ padding: "0.875rem 1.25rem" }}>
+                                {s.block ? (
+                                  <span style={{
+                                    background: "#e0e7ff",
+                                    color: "#4338ca",
+                                    padding: "0.25rem 0.5rem",
+                                    borderRadius: "0.25rem",
+                                    fontSize: "0.7rem",
+                                    fontWeight: 600,
+                                  }}>
+                                    {s.block}
+                                  </span>
+                                ) : "—"}
+                              </td>
                               <td style={{ padding: "0.875rem 1.25rem", fontFamily: "monospace", fontSize: "0.8rem", color: "#003366", fontWeight: 500 }}>{s.instructor_id}</td>
-                              <td style={{ padding: "0.875rem 1.25rem", fontWeight: 500, color: "#1e293b", whiteSpace: "nowrap" }}>{s.name}</td>
                               <td style={{ padding: "0.875rem 1.25rem", color: "#475569" }}>{s.subject}</td>
                               <td style={{ padding: "0.875rem 1.25rem", fontFamily: "monospace", fontSize: "0.8rem", color: "#64748b" }}>{s.subject_code}</td>
                               <td style={{ padding: "0.875rem 1.25rem" }}>
@@ -1192,6 +1190,33 @@ export default function SchedulesTab() {
                     <div><label style={labelStyle}>Subject Code</label><input type="text" value={form.subject_code} readOnly style={{ ...inputStyle, background: "#f8fafc", color: "#003366", fontFamily: "monospace", fontWeight: 600, cursor: "default" }} /></div>
                   </div>
                 )}
+                <div>
+                  <label style={labelStyle}>Block</label>
+                  <input 
+                    type="text" 
+                    placeholder="Block number (01-99)"
+                    maxLength={2}
+                    pattern="[0-9]{2}"
+                    value={form.block}
+                    onChange={(e) => {
+                      let value = e.target.value;
+                      value = value.replace(/[^0-9]/g, '');
+                      if (value.length > 2) {
+                        value = value.slice(0, 2);
+                      }
+                      setForm({ ...form, block: value });
+                    }}
+                    style={inputStyle}
+                  />
+                  <p style={{
+                    fontSize: "0.7rem",
+                    color: "#64748b",
+                    marginTop: "0.25rem",
+                    marginBottom: 0,
+                  }}>
+                    Enter 2-digit block number (e.g., 01, 02, 15)
+                  </p>
+                </div>
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "1rem" }}>
                   <div><label style={labelStyle}>Start Time *</label><input type="time" value={form.time} onChange={e => setForm({ ...form, time: e.target.value })} style={inputStyle} required /></div>
                   <div><label style={labelStyle}>End Time</label><input type="time" value={form.end_time} onChange={e => setForm({ ...form, end_time: e.target.value })} style={inputStyle} /></div>
@@ -1201,7 +1226,6 @@ export default function SchedulesTab() {
                       <option value="TTH">TTH</option>
                       <option value="SAT">SAT</option>
                       <option value="SUN">SUN</option>
-                      <option value="SAT-SUN">SAT-SUN</option>
                     </select>
                   </div>
                 </div>

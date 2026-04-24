@@ -12,11 +12,13 @@ interface Schedule {
   time: string;
   end_time?: string;
   day: string;
-  status: "Upcoming" | "Ongoing" | "Present" | "Absent" | "Attended" | "Excused";
+  status: "Upcoming" | "Ongoing" | "Present" | "Late" | "Absent" | "Attended" | "Excused";
   attendance?: "Present" | "Absent";
   room: string;
   device_id?: number | null;
   scanned_at?: string | null;
+  block?: string;
+  late_minutes?: number | null;
 }
 
 interface Event {
@@ -112,13 +114,14 @@ const statusColors: Record<string, { bg: string; color: string }> = {
   Upcoming: { bg: "#dbeafe", color: "#1d4ed8" },
   Ongoing:  { bg: "#fef9c3", color: "#a16207" },
   Present:  { bg: "#dcfce7", color: "#15803d" },
+  Late:     { bg: "#fed7aa", color: "#c2410c" },
   Absent:   { bg: "#fee2e2", color: "#dc2626" },
   Attended: { bg: "#f3e8ff", color: "#7e22ce" },
   Excused:  { bg: "#fff3cd", color: "#856404" },
 };
 
 const statusEmoji: Record<string, string> = {
-  Upcoming: "🔵", Ongoing: "🟡", Present: "🟢",
+  Upcoming: "🔵", Ongoing: "🟡", Present: "🟢", Late: "⏱️",
   Absent: "🔴", Attended: "🟣", Excused: "📝",
 };
 
@@ -393,7 +396,8 @@ export default function MyScheduleTab() {
     return s.name.toLowerCase().includes(q) ||
            s.subject.toLowerCase().includes(q) ||
            s.instructor_id.toLowerCase().includes(q) ||
-           s.room?.toLowerCase().includes(q);
+           s.room?.toLowerCase().includes(q) ||
+           (s.block && s.block.toLowerCase().includes(q));
   });
 
   const grouped = dayOrder.reduce((acc, day) => {
@@ -404,6 +408,7 @@ export default function MyScheduleTab() {
 
   const todaySchedules = schedules.filter(s => s.day === todayCode || s.day === "SAT-SUN");
   const todayPresent   = todaySchedules.filter(s => { const ds = getDisplayStatus(s); return ds === "Present" || ds === "Attended"; }).length;
+  const todayLate      = todaySchedules.filter(s => getDisplayStatus(s) === "Late").length;
   const todayAbsent    = todaySchedules.filter(s => getDisplayStatus(s) === "Absent").length;
   const todayOngoing   = todaySchedules.filter(s => getDisplayStatus(s) === "Ongoing").length;
   const todayExcused   = todaySchedules.filter(s => getDisplayStatus(s) === "Excused").length;
@@ -452,7 +457,7 @@ export default function MyScheduleTab() {
             </button>
           )}
 
-          <input type="text" placeholder="Search..." value={search}
+          <input type="text" placeholder="Search by name, subject, block..." value={search}
             onChange={e => setSearch(e.target.value)}
             style={{ padding: "0.5rem 1rem", border: "1px solid #e2e8f0", borderRadius: "0.5rem", fontSize: "0.875rem", outline: "none", minWidth: "180px", background: "#fff", color: "#1e293b" }} />
           <button onClick={() => fetchAll()}
@@ -508,6 +513,7 @@ export default function MyScheduleTab() {
               { label: "Total",   value: todaySchedules.length, color: "#fff" },
               { label: "Ongoing", value: todayOngoing,          color: "#fde68a" },
               { label: "Present", value: todayPresent,          color: "#4ade80" },
+              { label: "Late",    value: todayLate,             color: "#fb923c" },
               { label: "Absent",  value: todayAbsent,           color: "#f87171" },
               { label: "Excused", value: todayExcused,          color: "#fcd34d" },
             ].map(s => (
@@ -605,12 +611,14 @@ export default function MyScheduleTab() {
                         background:
                           displayStatus === "Present"  ? "#f0fdf4" :
                           displayStatus === "Attended" ? "#f3e8ff" :
+                          displayStatus === "Late"     ? "#fff7ed" :
                           displayStatus === "Absent"   ? "#fef2f2" :
                           displayStatus === "Excused"  ? "#fffbeb" :
                           displayStatus === "Ongoing"  ? "#fefce8" : "#f8fafc",
                         border: `1px solid ${
                           displayStatus === "Present"  ? "#bbf7d0" :
                           displayStatus === "Attended" ? "#d8b4fe" :
+                          displayStatus === "Late"     ? "#fed7aa" :
                           displayStatus === "Absent"   ? "#fecaca" :
                           displayStatus === "Excused"  ? "#fde68a" :
                           displayStatus === "Ongoing"  ? "#fde68a" : "#e2e8f0"
@@ -626,6 +634,12 @@ export default function MyScheduleTab() {
                               {s.subject}
                               {s.subject_code && <span style={{ fontFamily: "monospace", marginLeft: "0.4rem", color: "#64748b", fontSize: "0.75rem" }}>({s.subject_code})</span>}
                             </p>
+                            {/* Block display */}
+                            {s.block && (
+                              <p style={{ fontSize: "0.7rem", color: "#003366", marginTop: "0.1rem", fontWeight: 500 }}>
+                                📚 Block: {s.block}
+                              </p>
+                            )}
                             <div style={{ display: "flex", gap: "0.875rem", marginTop: "0.375rem", flexWrap: "wrap" }}>
                               <span style={{ fontSize: "0.75rem", color: "#64748b", display: "flex", alignItems: "center", gap: "0.25rem" }}>
                                 <svg width="11" height="11" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
@@ -640,25 +654,39 @@ export default function MyScheduleTab() {
                             </div>
                             {s.scanned_at && (
                               <div style={{ display: "flex", alignItems: "center", gap: "0.3rem", marginTop: "0.375rem" }}>
-                                <svg width="11" height="11" fill="none" stroke="#22c55e" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
-                                <span style={{ fontSize: "0.68rem", color: "#22c55e", fontWeight: 600 }}>
-                                  Scanned at {new Date(s.scanned_at).toLocaleTimeString("en-PH", { hour: "2-digit", minute: "2-digit", hour12: true })}
-                                </span>
+                                {displayStatus === "Late" ? (
+                                  <>
+                                    <svg width="11" height="11" fill="none" stroke="#c2410c" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                                    <span style={{ fontSize: "0.68rem", color: "#c2410c", fontWeight: 600 }}>
+                                      Late by {s.late_minutes ?? "?"} min • Scanned at {new Date(s.scanned_at).toLocaleTimeString("en-PH", { hour: "2-digit", minute: "2-digit", hour12: true })}
+                                    </span>
+                                  </>
+                                ) : (
+                                  <>
+                                    <svg width="11" height="11" fill="none" stroke="#22c55e" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                                    <span style={{ fontSize: "0.68rem", color: "#22c55e", fontWeight: 600 }}>
+                                      Scanned at {new Date(s.scanned_at).toLocaleTimeString("en-PH", { hour: "2-digit", minute: "2-digit", hour12: true })}
+                                    </span>
+                                  </>
+                                )}
                               </div>
                             )}
                           </div>
 
                           <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: "0.3rem", flexShrink: 0 }}>
                             {(displayStatus === "Present" || displayStatus === "Attended" ||
-                              displayStatus === "Absent"  || displayStatus === "Excused") && (
+                              displayStatus === "Late"  || displayStatus === "Absent"  || displayStatus === "Excused") && (
                               <span style={{
                                 fontSize: "0.68rem", fontWeight: 700, padding: "0.15rem 0.6rem", borderRadius: "9999px",
                                 background: (displayStatus === "Present" || displayStatus === "Attended") ? "#dcfce7" :
+                                            displayStatus === "Late" ? "#fed7aa" :
                                             displayStatus === "Excused" ? "#fff3cd" : "#fee2e2",
                                 color:      (displayStatus === "Present" || displayStatus === "Attended") ? "#15803d" :
+                                            displayStatus === "Late" ? "#c2410c" :
                                             displayStatus === "Excused" ? "#856404" : "#dc2626",
                               }}>
                                 {displayStatus === "Present" || displayStatus === "Attended" ? "✅ Present" :
+                                 displayStatus === "Late" ? "⏱️ Late" :
                                  displayStatus === "Excused" ? "📝 Excused" : "❌ Absent"}
                               </span>
                             )}

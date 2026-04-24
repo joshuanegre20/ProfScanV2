@@ -11,6 +11,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Str;
 use Illuminate\Support\Facades\Log;
 use App\Models\AttendanceLogs;
+use Carbon\Carbon;
 
 class DeviceController extends Controller
 {
@@ -20,9 +21,8 @@ class DeviceController extends Controller
         try {
             $request->validate(['pairing_token' => 'required|string']);
 
-            $device = Device::where('pairing_token', $request->pairing_token)
-                ->where('paired', true)
-                ->first();
+            // Allow both paired and unpaired devices to send heartbeat
+            $device = Device::where('pairing_token', $request->pairing_token)->first();
 
             if (!$device) {
                 return response()->json(['success' => false, 'message' => 'Device not found'], 404);
@@ -31,12 +31,12 @@ class DeviceController extends Controller
             $device->last_seen = now();
             $device->status    = 'online';
             $device->save();
-(new SocketService())->emitDeviceUpdate([
-    'device_id'  => $device->id,
-    'name'       => $device->name,
-    'status'     => 'online',
-    'last_seen'  => now()->toISOString(),
-]);
+            (new SocketService())->emitDeviceUpdate([
+                'device_id'  => $device->id,
+                'name'       => $device->name,
+                'status'     => 'online',
+                'last_seen'  => now()->toISOString(),
+            ]);
             return response()->json(['success' => true, 'message' => 'Heartbeat received']);
 
         } catch (\Exception $e) {
@@ -158,7 +158,16 @@ class DeviceController extends Controller
             }
             \Log::info('User found:', ['user_id' => $user->id, 'name' => $user->name, 'role' => $user->role]);
 
-            $now = now();
+            // Parse device time (Unix timestamp) or fall back to server time
+            $deviceTimeUnix = $request->input('device_time');
+            if ($deviceTimeUnix) {
+                // ✅ FIXED: convert UTC timestamp to Philippine time
+                $now = \Carbon\Carbon::createFromTimestamp($deviceTimeUnix)->setTimezone('Asia/Manila');
+                \Log::info('Using device time: ' . $now);
+            } else {
+                $now = now();
+                \Log::info('No device time provided, using server time: ' . $now);
+            }
 
             // Find ongoing schedule
             $schedule = null;
@@ -191,15 +200,30 @@ class DeviceController extends Controller
                 'scan_time' => $now->format('Y-m-d H:i:s'),
             ];
 
-            if ($schedule->status != 'Absent') {
-                // Update schedule to Present
-                $schedule->status     = 'Present';
+            if ($schedule && $schedule->status != 'Absent') {
+                // Determine if late: Check if scan time is > 20 mins after schedule start time
+                $scheduleStartToday = \Carbon\Carbon::today()->setTimeFromTimeString($schedule->time);
+                $minutesLate = $now->diffInMinutes($scheduleStartToday);
+                
+                $isLate = $minutesLate > 20;
+                $attendanceStatus = $isLate ? 'Late' : 'Present';
+                $scheduleStatus = $isLate ? 'Late' : 'Present';
+                
+                \Log::info('Scan time check:', [
+                    'schedule_start' => $schedule->time,
+                    'scan_time' => $now->format('H:i:s'),
+                    'minutes_late' => $minutesLate,
+                    'is_late' => $isLate,
+                ]);
+
+                // Update schedule to Present or Late
+                $schedule->status     = $scheduleStatus;
                 $schedule->attendance = 'Attended';
                 $schedule->scanned_at = $now;
                 $schedule->save();
-                \Log::info('Schedule updated to Present. ID: ' . $schedule->id);
+                \Log::info('Schedule updated to ' . $scheduleStatus . '. ID: ' . $schedule->id);
 
-                // Insert attendance log
+                // Insert attendance log with correct status
                 \App\Models\AttendanceLogs::create([
                     'instructor_id' => $user->instructor_id,
                     'schedule_id'   => $schedule->id,
@@ -207,13 +231,12 @@ class DeviceController extends Controller
                     'time_in'       => $now->format('H:i:s'),
                     'time_out'      => $schedule->end_time      ?? null,
                     'date'          => $now->format('Y-m-d'),
-                    'status'        => 'Present',
+                    'status'        => $attendanceStatus,
                     'day'           => $schedule->day,
                     'subject'       => $schedule->subject       ?? null,
                     'code'          => $schedule->subject_code  ?? null,
-                    'created_at'    => $now,
                 ]);
-                \Log::info('✅ Attendance log inserted (Present)');
+                \Log::info('✅ Attendance log inserted (' . $attendanceStatus . ')');
 
                 // Activity log
                 \App\Models\ActivityModel::create([
@@ -233,7 +256,7 @@ class DeviceController extends Controller
                     'type'         => 'scan',
                     'instructor_id'=> $user->instructor_id,
                     'subject'      => $schedule->subject,
-                    'description'  => 'Scanned in for ' . $schedule->subject,
+                    'description'  => 'Scanned in for ' . $schedule->subject . ($isLate ? ' (Late: ' . $minutesLate . ' mins)' : ''),
                     'created_at'   => $now->toISOString(),
                 ]);
 
@@ -246,17 +269,22 @@ class DeviceController extends Controller
                     'room'          => $schedule->room ?? null,
                     'device_id'     => $device->id,
                     'device_name'   => $device->name,
-                    'status'        => 'Present',
+                    'status'        => $scheduleStatus,
                     'scanned_at'    => $now->toISOString(),
                     'schedule_id'   => $schedule->id,
                 ]);
 
-                $responseData['message'] = 'Attendance recorded as Present';
-                $responseData['action']  = 'PRESENT';
+                $actionMessage = $isLate ? 'LATE' : 'PRESENT';
+                $responseData['message'] = 'Attendance recorded as ' . $attendanceStatus . ($isLate ? ' (' . $minutesLate . ' mins after start)' : '');
+                $responseData['action']  = $actionMessage;
+                $responseData['status']  = $attendanceStatus;
                 $responseData['subject'] = $schedule->subject;
                 $responseData['time']    = $schedule->time;
                 $responseData['day']     = $schedule->day;
                 $responseData['room']    = $schedule->room ?? 'N/A';
+                if ($isLate) {
+                    $responseData['late_minutes'] = $minutesLate;
+                }
 
             } else {
                 // No ongoing schedule — activity only
@@ -316,11 +344,10 @@ class DeviceController extends Controller
             'day'           => $request->day      ?? null,
             'time_in'       => null,
             'time_out'      => $request->time_out ?? null,
-            'date'          => $today,
+            'date'          => now()->format('Y-m-d'),
             'status'        => 'Absent',
             'created_at'    => now(),
             'updated_at'    => now(),
         ]);
-
     }
 }
