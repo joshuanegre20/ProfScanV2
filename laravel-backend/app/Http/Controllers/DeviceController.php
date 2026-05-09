@@ -124,215 +124,332 @@ class DeviceController extends Controller
         return response()->json(['message' => 'Device paired successfully', 'device' => $device], 201);
     }
 
-    public function scan(Request $request)
-    {
-        try {
-            \Log::info('==== SCAN REQUEST START ====');
-            \Log::info('Request data:', $request->all());
+   public function scan(Request $request)
+{
+    try {
+        \Log::info('==== SCAN REQUEST START ====');
+        \Log::info('Request data:', $request->all());
 
-            $instructor_id = $request->input('employee_id') ?? $request->input('instructor_id');
-            $pairing_token = $request->input('pairing_token');
+        $instructor_id = $request->input('employee_id') ?? $request->input('instructor_id');
+        $pairing_token = $request->input('pairing_token');
 
-            if (!$instructor_id) {
-                return response()->json(['success' => false, 'message' => 'Instructor ID is required'], 422);
-            }
-            if (!$pairing_token) {
-                return response()->json(['success' => false, 'message' => 'Pairing token is required'], 422);
-            }
+        if (!$instructor_id) {
+            return response()->json(['success' => false, 'message' => 'Instructor ID is required'], 422);
+        }
+        if (!$pairing_token) {
+            return response()->json(['success' => false, 'message' => 'Pairing token is required'], 422);
+        }
 
-            // Find device
-            $device = \App\Models\Device::where('pairing_token', $pairing_token)
-                ->where('paired', true)
+        // Find device
+        $device = \App\Models\Device::where('pairing_token', $pairing_token)
+            ->where('paired', true)
+            ->first();
+
+        if (!$device) {
+            return response()->json(['success' => false, 'message' => 'Device not found or not paired'], 404);
+        }
+        \Log::info('Device found:', ['device_id' => $device->id]);
+
+        // Find user
+        $user = \App\Models\User::where('instructor_id', $instructor_id)->first();
+
+        if (!$user) {
+            return response()->json(['success' => false, 'message' => 'User not found with Instructor ID: ' . $instructor_id], 404);
+        }
+        \Log::info('User found:', ['user_id' => $user->id, 'name' => $user->name, 'role' => $user->role]);
+
+        // Parse device time or fall back to server time
+        $deviceTimeUnix = $request->input('device_time');
+        if ($deviceTimeUnix) {
+            $now = \Carbon\Carbon::createFromTimestamp($deviceTimeUnix)->setTimezone('Asia/Manila');
+            \Log::info('Using device time: ' . $now);
+        } else {
+            $now = now();
+            \Log::info('No device time provided, using server time: ' . $now);
+        }
+
+        // Get current day of week and time
+        $currentDay = $now->format('l');
+        $currentTime = $now->format('H:i');
+        
+        \Log::info('Current day: ' . $currentDay . ', Current time: ' . $currentTime);
+
+        // Check if user has ANY schedule for today
+        $todaySchedules = \App\Models\ScheduleModel::where('instructor_id', $user->instructor_id)
+            ->where('day', $currentDay)
+            ->get();
+
+        if ($todaySchedules->isEmpty()) {
+            \Log::info('❌ No schedule found for today: ' . $currentDay);
+            return response()->json([
+                'success' => false, 
+                'message' => 'No schedule for today. Please check your class schedule.',
+                'status' => 'no_schedule_today'
+            ], 404);
+        }
+
+        // Find ongoing schedule for today
+        $schedule = null;
+        if ($user->role === 'instructor') {
+            \Log::info('Looking for today\'s Ongoing schedule for: ' . $user->instructor_id);
+            
+            $schedule = \App\Models\ScheduleModel::where('instructor_id', $user->instructor_id)
+                ->where('day', $currentDay)
+                ->where('status', 'Ongoing')
+                ->where(function($query) use ($currentTime) {
+                    $query->where('time', '<=', $currentTime)
+                          ->where(function($q) use ($currentTime) {
+                              $q->whereNull('end_time')
+                                ->orWhere('end_time', '>=', $currentTime);
+                          });
+                })
                 ->first();
 
-            if (!$device) {
-                return response()->json(['success' => false, 'message' => 'Device not found or not paired'], 404);
-            }
-            \Log::info('Device found:', ['device_id' => $device->id]);
-
-            // Find user
-            $user = \App\Models\User::where('instructor_id', $instructor_id)->first();
-
-            if (!$user) {
-                return response()->json(['success' => false, 'message' => 'User not found with Instructor ID: ' . $instructor_id], 404);
-            }
-            \Log::info('User found:', ['user_id' => $user->id, 'name' => $user->name, 'role' => $user->role]);
-
-            // Parse device time (Unix timestamp) or fall back to server time
-            $deviceTimeUnix = $request->input('device_time');
-            if ($deviceTimeUnix) {
-                // ✅ FIXED: convert UTC timestamp to Philippine time
-                $now = \Carbon\Carbon::createFromTimestamp($deviceTimeUnix)->setTimezone('Asia/Manila');
-                \Log::info('Using device time: ' . $now);
+            if ($schedule) {
+                \Log::info('✅ Found ongoing schedule for today:', [
+                    'schedule_id' => $schedule->id, 
+                    'subject' => $schedule->subject,
+                    'day' => $schedule->day,
+                    'time' => $schedule->time,
+                    'end_time' => $schedule->end_time
+                ]);
             } else {
-                $now = now();
-                \Log::info('No device time provided, using server time: ' . $now);
-            }
-
-            // Find ongoing schedule
-            $schedule = null;
-            if ($user->role === 'instructor') {
-                \Log::info('Looking for Ongoing schedule for: ' . $user->instructor_id);
-                $schedule = \App\Models\ScheduleModel::where('instructor_id', $user->instructor_id)
-                    ->where('status', 'Ongoing')
-                    ->first();
-
-                if ($schedule) {
-                    \Log::info('✅ Found ongoing schedule:', ['schedule_id' => $schedule->id, 'subject' => $schedule->subject]);
-                } else {
-                    \Log::info('❌ No ongoing schedule found');
-                }
-            }
-
-            // Update user scan status
-            $user->scan_status     = 'scanned';
-            $user->last_scanned_at = $now;
-            $user->save();
-
-            // Update device
-            $device->last_seen = $now;
-            $device->status    = 'online';
-            $device->save();
-
-            $responseData = [
-                'success'   => true,
-                'name'      => $user->name,
-                'scan_time' => $now->format('Y-m-d H:i:s'),
-            ];
-
-            if ($schedule && $schedule->status != 'Absent') {
-                // Determine if late: Check if scan time is > 20 mins after schedule start time
-                $scheduleStartToday = \Carbon\Carbon::today()->setTimeFromTimeString($schedule->time);
-                $minutesLate = $now->diffInMinutes($scheduleStartToday);
+                // Check if there's a schedule for today but not yet started
+                $upcomingSchedule = $todaySchedules->first(function($s) use ($currentTime) {
+                    return $s->time > $currentTime && $s->status !== 'Absent' && $s->status !== 'Present' && $s->status !== 'Late';
+                });
                 
-                $isLate = $minutesLate > 20;
-                $attendanceStatus = $isLate ? 'Late' : 'Present';
-                $scheduleStatus = $isLate ? 'Late' : 'Present';
-                
-                \Log::info('Scan time check:', [
-                    'schedule_start' => $schedule->time,
-                    'scan_time' => $now->format('H:i:s'),
-                    'minutes_late' => $minutesLate,
-                    'is_late' => $isLate,
-                ]);
-
-                // Update schedule to Present or Late
-                $schedule->status     = $scheduleStatus;
-                $schedule->attendance = 'Attended';
-                $schedule->scanned_at = $now;
-                $schedule->save();
-                \Log::info('Schedule updated to ' . $scheduleStatus . '. ID: ' . $schedule->id);
-
-                // Insert attendance log with correct status
-                \App\Models\AttendanceLogs::create([
-                    'instructor_id' => $user->instructor_id,
-                    'schedule_id'   => $schedule->id,
-                    'room'          => $schedule->room          ?? null,
-                    'time_in'       => $now->format('H:i:s'),
-                    'time_out'      => $schedule->end_time      ?? null,
-                    'date'          => $now->format('Y-m-d'),
-                    'status'        => $attendanceStatus,
-                    'day'           => $schedule->day,
-                    'subject'       => $schedule->subject       ?? null,
-                    'code'          => $schedule->subject_code  ?? null,
-                ]);
-                \Log::info('✅ Attendance log inserted (' . $attendanceStatus . ')');
-
-                // Activity log
-                \App\Models\ActivityModel::create([
-                    'name'          => $user->name,
-                    'type'          => 'scan',
-                    'instructor_id' => $user->instructor_id,
-                    'device_id'     => $device->id,
-                    'subject'       => $schedule->subject,
-                    'scan_schedule' => $schedule->id,
-                    'success'       => '1',
-                ]);
-
-                // ── Emit activity update to Socket.io ────────────
-                (new SocketService())->emitActivityUpdate([
-                    'id'           => time(),
-                    'name'         => $user->name,
-                    'type'         => 'scan',
-                    'instructor_id'=> $user->instructor_id,
-                    'subject'      => $schedule->subject,
-                    'description'  => 'Scanned in for ' . $schedule->subject . ($isLate ? ' (Late: ' . $minutesLate . ' mins)' : ''),
-                    'created_at'   => $now->toISOString(),
-                ]);
-
-                // ── Emit scan event to Socket.io ──────────────────
-                (new SocketService())->emitScan([
-                    'instructor_id' => $user->instructor_id,
-                    'name'          => $user->name,
-                    'department'    => $user->department ?? null,
-                    'subject'       => $schedule->subject,
-                    'room'          => $schedule->room ?? null,
-                    'device_id'     => $device->id,
-                    'device_name'   => $device->name,
-                    'status'        => $scheduleStatus,
-                    'scanned_at'    => $now->toISOString(),
-                    'schedule_id'   => $schedule->id,
-                ]);
-
-                $actionMessage = $isLate ? 'LATE' : 'PRESENT';
-                $responseData['message'] = 'Attendance recorded as ' . $attendanceStatus . ($isLate ? ' (' . $minutesLate . ' mins after start)' : '');
-                $responseData['action']  = $actionMessage;
-                $responseData['status']  = $attendanceStatus;
-                $responseData['subject'] = $schedule->subject;
-                $responseData['time']    = $schedule->time;
-                $responseData['day']     = $schedule->day;
-                $responseData['room']    = $schedule->room ?? 'N/A';
-                if ($isLate) {
-                    $responseData['late_minutes'] = $minutesLate;
+                if ($upcomingSchedule) {
+                    $scheduleTime = \Carbon\Carbon::createFromFormat('H:i', $upcomingSchedule->time);
+                    $currentTimeObj = \Carbon\Carbon::createFromFormat('H:i', $currentTime);
+                    $minutesUntil = $currentTimeObj->diffInMinutes($scheduleTime);
+                    
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'Your class for ' . $upcomingSchedule->subject . ' starts at ' . $upcomingSchedule->time . '. Please wait ' . $minutesUntil . ' minutes.',
+                        'status' => 'upcoming',
+                        'next_class' => [
+                            'subject' => $upcomingSchedule->subject,
+                            'time' => $upcomingSchedule->time,
+                            'minutes_until' => $minutesUntil
+                        ]
+                    ], 400);
                 }
-
-            } else {
-                // No ongoing schedule — activity only
-                \App\Models\ActivityModel::create([
-                    'name'          => $user->name,
-                    'type'          => 'scan',
-                    'instructor_id' => $user->instructor_id,
-                    'device_id'     => $device->id,
-                    'success'       => '1',
-                ]);
-
-                // ── Emit activity update (no schedule) ───────────
-                (new SocketService())->emitActivityUpdate([
-                    'id'           => time(),
-                    'name'         => $user->name,
-                    'type'         => 'scan',
-                    'instructor_id'=> $user->instructor_id,
-                    'subject'      => null,
-                    'description'  => 'Attendance scan (no active schedule)',
-                    'created_at'   => $now->toISOString(),
-                ]);
-
-                // ── Emit scan event (no schedule) ─────────────────
-                (new SocketService())->emitScan([
-                    'instructor_id' => $user->instructor_id,
-                    'name'          => $user->name,
-                    'department'    => $user->department ?? null,
-                    'device_id'     => $device->id,
-                    'device_name'   => $device->name,
-                    'status'        => 'scanned',
-                    'scanned_at'    => $now->toISOString(),
-                    'schedule_id'   => null,
-                ]);
-
-                $responseData['message'] = 'Scan recorded (no ongoing schedule)';
-                $responseData['action']  = 'SCANNED';
-                $responseData['hint']    = 'No schedule with Ongoing status found';
+                
+                // Check if already scanned for today
+                $alreadyScanned = $todaySchedules->first(function($s) {
+                    return $s->status === 'Present' || $s->status === 'Late' || $s->status === 'Attended';
+                });
+                
+                if ($alreadyScanned) {
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'You have already completed your attendance today for ' . $alreadyScanned->subject . '.',
+                        'status' => 'already_scanned'
+                    ], 400);
+                }
+                
+                // Check if schedule is marked as Absent
+                $absentSchedule = $todaySchedules->first(function($s) {
+                    return $s->status === 'Absent';
+                });
+                
+                if ($absentSchedule) {
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'Your schedule for ' . $absentSchedule->subject . ' today has been marked as ABSENT. Please contact your administrator.',
+                        'status' => 'absent'
+                    ], 400);
+                }
+                
+                // No ongoing class at this time
+                return response()->json([
+                    'success' => false, 
+                    'message' => 'No ongoing class at this time. Your class schedule today: ' . $todaySchedules->pluck('subject')->implode(', ') . '.',
+                    'schedule_today' => $todaySchedules->map(function($s) {
+                        return [
+                            'subject' => $s->subject,
+                            'time' => $s->time,
+                            'end_time' => $s->end_time,
+                            'status' => $s->status
+                        ];
+                    }),
+                    'status' => 'no_ongoing_class'
+                ], 404);
             }
-
-            \Log::info('==== SCAN REQUEST END ====');
-            return response()->json($responseData);
-
-        } catch (\Exception $e) {
-            \Log::error('Scan error: ' . $e->getMessage());
-            \Log::error('Stack trace: ' . $e->getTraceAsString());
-            return response()->json(['success' => false, 'message' => 'Server error: ' . $e->getMessage()], 500);
         }
+
+        // Check if schedule is marked as Absent
+        if ($schedule && $schedule->status === 'Absent') {
+            \Log::warning('❌ Scan rejected: Schedule is marked as ABSENT for instructor: ' . $user->instructor_id);
+            
+            (new SocketService())->emitScan([
+                'instructor_id' => $user->instructor_id,
+                'name'          => $user->name,
+                'department'    => $user->department ?? null,
+                'subject'       => $schedule->subject,
+                'room'          => $schedule->room ?? null,
+                'device_id'     => $device->id,
+                'device_name'   => $device->name,
+                'status'        => 'rejected',
+                'reason'        => 'Schedule marked as Absent',
+                'scanned_at'    => $now->toISOString(),
+                'schedule_id'   => $schedule->id,
+            ]);
+            
+            return response()->json([
+                'success' => false, 
+                'message' => 'Your schedule for ' . $schedule->subject . ' today has been marked as ABSENT. Please contact your administrator.',
+                'status' => 'absent'
+            ], 403);
+        }
+
+        // Check if already scanned for this schedule today
+        if ($schedule) {
+            $existingAttendance = AttendanceLogs::where('schedule_id', $schedule->id)
+                ->where('instructor_id', $user->instructor_id)
+                ->whereDate('date', $now->format('Y-m-d'))
+                ->first();
+            
+            if ($existingAttendance) {
+                \Log::warning('⚠️ Duplicate scan attempt detected for schedule: ' . $schedule->id);
+                
+                (new SocketService())->emitScan([
+                    'instructor_id' => $user->instructor_id,
+                    'name'          => $user->name,
+                    'subject'       => $schedule->subject,
+                    'status'        => 'duplicate',
+                    'reason'        => 'Already scanned for today',
+                    'scanned_at'    => $now->toISOString(),
+                ]);
+                
+                return response()->json([
+                    'success' => false,
+                    'message' => 'You have already scanned for ' . $schedule->subject . ' today. Your status: ' . $existingAttendance->status,
+                    'status' => 'duplicate',
+                    'scanned_status' => $existingAttendance->status
+                ], 409);
+            }
+        }
+
+        // Update user scan status
+        $user->scan_status     = 'scanned';
+        $user->last_scanned_at = $now;
+        $user->save();
+
+        // Update device
+        $device->last_seen = $now;
+        $device->status    = 'online';
+        $device->save();
+
+        $responseData = [
+            'success'   => true,
+            'name'      => $user->name,
+            'scan_time' => $now->format('Y-m-d H:i:s'),
+        ];
+
+        if ($schedule) {
+            // Determine if late: Check if scan time is > 20 mins after schedule start time
+            $scheduleStartToday = \Carbon\Carbon::today()->setTimeFromTimeString($schedule->time);
+            $minutesLate = $now->diffInMinutes($scheduleStartToday);
+            
+            $isLate = $minutesLate > 20;
+            $attendanceStatus = $isLate ? 'Late' : 'Present';
+            $scheduleStatus = $isLate ? 'Late' : 'Present';
+            
+            \Log::info('Scan time check:', [
+                'schedule_start' => $schedule->time,
+                'scan_time' => $now->format('H:i:s'),
+                'minutes_late' => $minutesLate,
+                'is_late' => $isLate,
+            ]);
+
+            // Update schedule status
+            $schedule->status     = $scheduleStatus;
+            $schedule->attendance = 'Attended';
+            $schedule->scanned_at = $now;
+            $schedule->save();
+            \Log::info('Schedule updated to ' . $scheduleStatus . '. ID: ' . $schedule->id);
+
+            // Insert attendance log
+            AttendanceLogs::create([
+                'instructor_id' => $user->instructor_id,
+                'schedule_id'   => $schedule->id,
+                'room'          => $schedule->room          ?? null,
+                'time_in'       => $now->format('H:i:s'),
+                'time_out'      => $schedule->end_time      ?? null,
+                'date'          => $now->format('Y-m-d'),
+                'status'        => $attendanceStatus,
+                'day'           => $schedule->day,
+                'subject'       => $schedule->subject       ?? null,
+                'code'          => $schedule->subject_code  ?? null,
+            ]);
+            \Log::info('✅ Attendance log inserted (' . $attendanceStatus . ')');
+
+            // Activity log
+            ActivityModel::create([
+                'name'          => $user->name,
+                'type'          => 'scan',
+                'instructor_id' => $user->instructor_id,
+                'device_id'     => $device->id,
+                'subject'       => $schedule->subject,
+                'scan_schedule' => $schedule->id,
+                'success'       => '1',
+            ]);
+
+            // Emit activity update
+            (new SocketService())->emitActivityUpdate([
+                'id'           => time(),
+                'name'         => $user->name,
+                'type'         => 'scan',
+                'instructor_id'=> $user->instructor_id,
+                'subject'      => $schedule->subject,
+                'description'  => 'Scanned in for ' . $schedule->subject . ($isLate ? ' (Late: ' . $minutesLate . ' mins)' : ''),
+                'created_at'   => $now->toISOString(),
+            ]);
+
+            // Emit scan event
+            (new SocketService())->emitScan([
+                'instructor_id' => $user->instructor_id,
+                'name'          => $user->name,
+                'department'    => $user->department ?? null,
+                'subject'       => $schedule->subject,
+                'room'          => $schedule->room ?? null,
+                'device_id'     => $device->id,
+                'device_name'   => $device->name,
+                'status'        => $scheduleStatus,
+                'scanned_at'    => $now->toISOString(),
+                'schedule_id'   => $schedule->id,
+            ]);
+
+            $responseData['message'] = 'Attendance recorded as ' . $attendanceStatus . ($isLate ? ' (' . $minutesLate . ' mins after start)' : '');
+            $responseData['action']  = $isLate ? 'LATE' : 'PRESENT';
+            $responseData['status']  = $attendanceStatus;
+            $responseData['subject'] = $schedule->subject;
+            $responseData['time']    = $schedule->time;
+            $responseData['day']     = $schedule->day;
+            $responseData['room']    = $schedule->room ?? 'N/A';
+            if ($isLate) {
+                $responseData['late_minutes'] = $minutesLate;
+            }
+
+        } else {
+            return response()->json([
+                'success' => false, 
+                'message' => 'No ongoing class found for today at this time.',
+                'status' => 'no_ongoing_class'
+            ], 404);
+        }
+
+        \Log::info('==== SCAN REQUEST END ====');
+        return response()->json($responseData);
+
+    } catch (\Exception $e) {
+        \Log::error('Scan error: ' . $e->getMessage());
+        \Log::error('Stack trace: ' . $e->getTraceAsString());
+        return response()->json(['success' => false, 'message' => 'Server error: ' . $e->getMessage()], 500);
     }
+}
     
     public function markAbsent(Request $request){
          DB::table('attendance_logs_db')->insert([

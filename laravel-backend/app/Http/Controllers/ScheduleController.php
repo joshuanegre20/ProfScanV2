@@ -31,7 +31,7 @@ class ScheduleController extends Controller
             'subject_code'  => 'required|string|max:50',
             'time'          => 'required|string',
             'end_time'      => 'nullable|string',
-            'day'           => 'required|in:MWF,TTH,SAT,SUN,SAT-SUN',
+            'day'           => 'required|in:MWF,TTH,SAT,SUN',
             'status'        => 'required|in:Upcoming,Ongoing,Present,Absent,Attended,Excused',
             'room'          => 'nullable|string|max:100',
             'device_id'     => 'nullable|exists:devices,id',
@@ -60,7 +60,7 @@ class ScheduleController extends Controller
             'subject_code'  => 'sometimes|string|max:50',
             'time'          => 'sometimes|string',
             'end_time'      => 'nullable|string',
-            'day'           => 'sometimes|in:MWF,TTH,SAT,SUN,SAT-SUN',
+            'day'           => 'sometimes|in:MWF,TTH,SAT,SUN',
             'status'        => 'sometimes|in:Upcoming,Ongoing,Present,Absent,Attended,Excused',
             'room'          => 'nullable|string|max:100',
             'device_id'     => 'nullable|exists:devices,id',
@@ -95,112 +95,177 @@ class ScheduleController extends Controller
         return response()->json(['message' => 'Schedule deleted successfully']);
     }
 
-  public function setOngoing(Request $request)
-{
-    try {
-        $request->validate([
-            'schedule_id' => 'required|integer|exists:schedule,id',
-        ]);
-
-        $nowPH    = $this->nowPH();
-        $today    = $nowPH->format('Y-m-d');
-        $currentTime = $nowPH->format('H:i:s');
-        
-        $schedule = DB::table('schedule')->where('id', $request->schedule_id)->first();
-
-        if (!$schedule) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Schedule not found with ID: ' . $request->schedule_id,
-            ], 404);
-        }
-
-        // Determine the correct status based on current time
-        $newStatus = 'Ongoing';
-        
-        // If current time is past end_time, mark as Absent
-        if ($schedule->end_time && $currentTime > $schedule->end_time) {
-            $newStatus = 'Absent';
-        }
-        // If time hasn't started yet, keep as Upcoming
-        else if ($schedule->time && $currentTime < $schedule->time) {
-            $newStatus = 'Upcoming';
-        }
-        // If time is within range, mark as Ongoing
-        else {
-            $newStatus = 'Ongoing';
-        }
-
-        DB::table('schedule')
-            ->where('id', $schedule->id)
-            ->update([
-                'status' => $newStatus, 
-                'updated_at' => $nowPH
+    public function setOngoing(Request $request)
+    {
+        try {
+            $request->validate([
+                'schedule_id' => 'required|integer|exists:schedule,id',
             ]);
 
-        $this->socket->emitScheduleUpdate([
-            'schedule_id'   => $schedule->id,
-            'status'        => $newStatus,
-            'instructor_id' => $schedule->instructor_id,
-            'subject'       => $schedule->subject,
-            'action'        => 'status_changed',
-        ]);
+            $nowPH    = $this->nowPH();
+            $today    = $nowPH->format('Y-m-d');
+            $currentTime = $nowPH->format('H:i:s');
+            $todayGroup = $this->getTodayGroup();
+            
+            $schedule = DB::table('schedule')->where('id', $request->schedule_id)->first();
 
-        // Only create absent record if the schedule is actually Absent (time has passed)
-        if ($newStatus === 'Absent') {
-            $alreadyLogged = DB::table('attendance_logs_db')
-                ->where('instructor_id', $schedule->instructor_id)
-                ->where('schedule_id',   $schedule->id)
-                ->where('date',          $today)
-                ->exists();
+            if (!$schedule) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Schedule not found',
+                ], 404);
+            }
 
-            if (!$alreadyLogged) {
-                DB::table('attendance_logs_db')->insert([
-                    'instructor_id' => $schedule->instructor_id,
-                    'schedule_id'   => $schedule->id,
-                    'room'          => $schedule->room         ?? null,
-                    'subject'       => $schedule->subject      ?? null,
-                    'code'          => $schedule->subject_code ?? null,
-                    'day'           => $schedule->day          ?? null,
-                    'time_in'       => null,
-                    'time_out'      => $schedule->end_time     ?? null,
-                    'date'          => $today,
-                    'status'        => 'Absent',
-                    'created_at'    => $nowPH,
-                    'updated_at'    => $nowPH,
-                ]);
-
-                $this->socket->emitAttendanceUpdate([
-                    'type'          => 'auto_absent',
-                    'schedule_id'   => $schedule->id,
-                    'instructor_id' => $schedule->instructor_id,
-                    'status'        => 'Absent',
-                    'date'          => $today,
+            // CRITICAL FIX: Only update status if this schedule is for TODAY
+            if ($schedule->day !== $todayGroup) {
+                // Not today's schedule - keep as Upcoming
+                if ($schedule->status !== 'Upcoming') {
+                    DB::table('schedule')
+                        ->where('id', $schedule->id)
+                        ->update([
+                            'status' => 'Upcoming',
+                            'updated_at' => $nowPH
+                        ]);
+                    
+                    $this->socket->emitScheduleUpdate([
+                        'schedule_id'   => $schedule->id,
+                        'status'        => 'Upcoming',
+                        'instructor_id' => $schedule->instructor_id,
+                        'subject'       => $schedule->subject,
+                        'action'        => 'status_changed',
+                    ]);
+                }
+                
+                return response()->json([
+                    'success' => true,
+                    'message' => "Schedule is for {$schedule->day}, not today ({$todayGroup}). Status set to Upcoming.",
+                    'schedule_id' => $schedule->id,
+                    'status' => 'Upcoming',
                 ]);
             }
+
+            // For today's schedule, determine status based on time
+            $newStatus = $schedule->status; // Keep current status as default
+            
+            // If schedule time has passed end_time, mark as Absent
+            if ($schedule->end_time && $currentTime > $schedule->end_time) {
+                $newStatus = 'Absent';
+            }
+            // If time is within schedule range, mark as Ongoing
+            else if ($schedule->time && $currentTime >= $schedule->time && (!$schedule->end_time || $currentTime <= $schedule->end_time)) {
+                $newStatus = 'Ongoing';
+            }
+            // If time hasn't started yet, keep as Upcoming
+            else if ($schedule->time && $currentTime < $schedule->time) {
+                $newStatus = 'Upcoming';
+            }
+
+            // Only update if status changed
+            if ($schedule->status !== $newStatus) {
+                DB::table('schedule')
+                    ->where('id', $schedule->id)
+                    ->update([
+                        'status' => $newStatus, 
+                        'updated_at' => $nowPH
+                    ]);
+
+                $this->socket->emitScheduleUpdate([
+                    'schedule_id'   => $schedule->id,
+                    'status'        => $newStatus,
+                    'instructor_id' => $schedule->instructor_id,
+                    'subject'       => $schedule->subject,
+                    'action'        => 'status_changed',
+                ]);
+            }
+
+            // Only create absent record if the schedule is Absent and not already logged
+            if ($newStatus === 'Absent') {
+                $alreadyLogged = DB::table('attendance_logs_db')
+                    ->where('instructor_id', $schedule->instructor_id)
+                    ->where('schedule_id',   $schedule->id)
+                    ->where('date',          $today)
+                    ->exists();
+
+                if (!$alreadyLogged) {
+                    DB::table('attendance_logs_db')->insert([
+                        'instructor_id' => $schedule->instructor_id,
+                        'schedule_id'   => $schedule->id,
+                        'room'          => $schedule->room         ?? null,
+                        'subject'       => $schedule->subject      ?? null,
+                        'code'          => $schedule->subject_code ?? null,
+                        'day'           => $schedule->day          ?? null,
+                        'time_in'       => null,
+                        'time_out'      => $schedule->end_time     ?? null,
+                        'date'          => $today,
+                        'status'        => 'Absent',
+                        'created_at'    => $nowPH,
+                        'updated_at'    => $nowPH,
+                    ]);
+
+                    $this->socket->emitAttendanceUpdate([
+                        'type'          => 'auto_absent',
+                        'schedule_id'   => $schedule->id,
+                        'instructor_id' => $schedule->instructor_id,
+                        'status'        => 'Absent',
+                        'date'          => $today,
+                    ]);
+                }
+            }
+
+            return response()->json([
+                'success'     => true,
+                'message'     => "Schedule status set to {$newStatus}",
+                'schedule_id' => $schedule->id,
+                'status'      => $newStatus,
+            ]);
+
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Validation failed',
+                'errors'  => $e->errors(),
+            ], 422);
+        } catch (\Exception $e) {
+            \Log::error('setOngoing error: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'Server error: ' . $e->getMessage(),
+            ], 500);
         }
-
-        return response()->json([
-            'success'     => true,
-            'message'     => "Schedule status set to {$newStatus}",
-            'schedule_id' => $schedule->id,
-            'status'      => $newStatus,
-        ]);
-
-    } catch (\Illuminate\Validation\ValidationException $e) {
-        return response()->json([
-            'success' => false,
-            'message' => 'Validation failed',
-            'errors'  => $e->errors(),
-        ], 422);
-    } catch (\Exception $e) {
-        \Log::error('setOngoing error: ' . $e->getMessage());
-        return response()->json([
-            'success' => false,
-            'message' => 'Server error: ' . $e->getMessage(),
-        ], 500);
     }
-}
+
+    // Add this method to reset all non-today schedules to Upcoming
+    public function resetNonTodaySchedules()
+    {
+        try {
+            $nowPH = $this->nowPH();
+            $todayGroup = $this->getTodayGroup();
+            
+            // Reset all schedules that are NOT for today
+            $resetCount = DB::table('schedule')
+                ->where('day', '!=', $todayGroup)
+                ->whereIn('status', ['Ongoing', 'Absent', 'Late'])
+                ->update([
+                    'status' => 'Upcoming',
+                    'updated_at' => $nowPH
+                ]);
+            
+            \Log::info("Reset {$resetCount} non-today schedules to Upcoming");
+            
+            return response()->json([
+                'success' => true,
+                'message' => "Reset {$resetCount} schedules",
+                'count' => $resetCount
+            ]);
+            
+        } catch (\Exception $e) {
+            \Log::error('resetNonTodaySchedules error: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => $e->getMessage()
+            ], 500);
+        }
+    }
 
     public function excuseAllToday(Request $request)
     {
@@ -209,7 +274,7 @@ class ScheduleController extends Controller
                 'device_id' => 'required|integer|exists:devices,id',
                 'event_id'  => 'nullable|integer',
                 'reason'    => 'nullable|string|max:255',
-                'day_group' => 'nullable|string|in:MWF,TTH,SAT,SUN,SAT-SUN',
+                'day_group' => 'nullable|string|in:MWF,TTH,SAT,SUN',
             ]);
 
             $nowPH  = $this->nowPH();
@@ -219,14 +284,6 @@ class ScheduleController extends Controller
             $todayGroup = $request->filled('day_group')
                 ? $request->day_group
                 : $this->getTodayGroup();
-
-            \Log::info('excuseAllToday', [
-                'device_id'  => $request->device_id,
-                'todayGroup' => $todayGroup,
-                'today'      => $today,
-                'nowPH'      => $nowPH->format('Y-m-d H:i:s'),
-                'source'     => $request->filled('day_group') ? 'frontend' : 'server',
-            ]);
 
             if (!$todayGroup) {
                 return response()->json([
@@ -242,33 +299,10 @@ class ScheduleController extends Controller
                 ->whereNotIn('status', ['Present', 'Attended'])
                 ->get();
 
-            \Log::info('Schedules to excuse', [
-                'count' => $schedulesToExcuse->count(),
-                'schedules' => $schedulesToExcuse->map(function($s) {
-                    return [
-                        'id' => $s->id,
-                        'name' => $s->name,
-                        'status' => $s->status,
-                    ];
-                })->toArray()
-            ]);
-
             if ($schedulesToExcuse->isEmpty()) {
-                $todaySchedulesCount = DB::table('schedule')
-                    ->where('device_id', $request->device_id)
-                    ->where('day', $todayGroup)
-                    ->count();
-
-                $presentCount = DB::table('schedule')
-                    ->where('device_id', $request->device_id)
-                    ->where('day', $todayGroup)
-                    ->whereIn('status', ['Present', 'Attended'])
-                    ->count();
-
                 return response()->json([
                     'success' => true,
-                    'message' => "No schedules to excuse for today ({$todayGroup}). " .
-                                 "{$presentCount} schedule(s) already marked Present/Attended.",
+                    'message' => "No schedules to excuse for today ({$todayGroup}).",
                     'excused' => 0,
                 ]);
             }
@@ -277,7 +311,6 @@ class ScheduleController extends Controller
             $reason       = $request->reason ?? 'Event';
 
             foreach ($schedulesToExcuse as $schedule) {
-                // Update schedule to Excused
                 DB::table('schedule')
                     ->where('id', $schedule->id)
                     ->update([
@@ -285,7 +318,6 @@ class ScheduleController extends Controller
                         'updated_at' => $nowPH,
                     ]);
 
-                // Check if attendance log exists
                 $existingLog = DB::table('attendance_logs_db')
                     ->where('instructor_id', $schedule->instructor_id)
                     ->where('schedule_id',   $schedule->id)
@@ -316,7 +348,6 @@ class ScheduleController extends Controller
                     ]);
                 }
 
-                // Emit socket events
                 $this->socket->emitScheduleUpdate([
                     'schedule_id'   => $schedule->id,
                     'status'        => 'Excused',
@@ -338,19 +369,12 @@ class ScheduleController extends Controller
 
             return response()->json([
                 'success' => true,
-                'message' => "Successfully excused {$excusedCount} schedule(s) for today ({$todayGroup}) due to: {$reason}",
+                'message' => "Successfully excused {$excusedCount} schedule(s) for today ({$todayGroup})",
                 'excused' => $excusedCount,
             ]);
 
-        } catch (\Illuminate\Validation\ValidationException $e) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Validation failed',
-                'errors'  => $e->errors(),
-            ], 422);
         } catch (\Exception $e) {
             \Log::error('excuseAllToday error: ' . $e->getMessage());
-            \Log::error($e->getTraceAsString());
             return response()->json([
                 'success' => false,
                 'message' => 'Server error: ' . $e->getMessage(),
@@ -379,7 +403,6 @@ class ScheduleController extends Controller
 
     /**
      * Returns current time in Asia/Manila timezone.
-     * Use this everywhere instead of now() to avoid UTC day-boundary issues.
      */
     private function nowPH(): \Carbon\Carbon
     {
@@ -391,7 +414,7 @@ class ScheduleController extends Controller
      */
     private function getTodayGroup(): string
     {
-        $day = $this->nowPH()->dayOfWeek; // 0 = Sun, 1 = Mon … 6 = Sat
+        $day = $this->nowPH()->dayOfWeek;
         
         switch ($day) {
             case 1:

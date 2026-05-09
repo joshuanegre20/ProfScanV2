@@ -19,6 +19,9 @@ interface Device {
   pairing_token: string;
 }
 
+// Hardcoded server URL
+const HARDCODED_SERVER_URL = "https://api.captoneproject101.online/api/scan";
+
 const glassCardStyle = {
   background: "#fff",
   borderRadius: "1rem",
@@ -36,9 +39,24 @@ const inputStyle: React.CSSProperties = {
   background: "#fff",
 };
 
+const inputErrorStyle: React.CSSProperties = {
+  ...inputStyle,
+  borderColor: "#dc2626",
+  boxShadow: "0 0 0 3px rgba(220,38,38,0.1)",
+};
+
 const labelStyle: React.CSSProperties = {
   display: "block", fontSize: "0.7rem", fontWeight: 600, color: "#64748b",
   textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: "0.375rem",
+};
+
+const errorTextStyle: React.CSSProperties = {
+  fontSize: "0.7rem",
+  color: "#dc2626",
+  marginTop: "0.25rem",
+  display: "flex",
+  alignItems: "center",
+  gap: "0.25rem",
 };
 
 const focus = (e: React.FocusEvent<HTMLInputElement>) =>
@@ -54,11 +72,9 @@ async function buildQRUrl(device: Device): Promise<string> {
     name: device.name,
     wifi_ssid: device.wifi_ssid,
     wifi_password: device.wifi_password,
-    server_url: device.server_url,
+    server_url: HARDCODED_SERVER_URL,
     scan_cooldown: device.scan_cooldown,
-    register_url: device.server_url
-      ? device.server_url.replace(/\/api\/scan$/, '/api/devices/register')
-      : `${window.location.origin.replace(":5173", ":8000")}/api/devices/register`,
+    register_url: "https://api.captoneproject101.online/api/devices/register",
   });
 
   return QRCode.toDataURL(payload, {
@@ -199,6 +215,13 @@ function PairedCard({ device, onConfigure, formatLastSeen }: {
             </svg>
             <span style={{ fontSize: "0.75rem", color: "#64748b" }}>Cooldown: {device.scan_cooldown / 1000}s</span>
           </div>
+          <div style={{ display: "flex", alignItems: "center", gap: "0.4rem" }}>
+            <svg width="12" height="12" fill="none" stroke="#64748b" viewBox="0 0 24 24">
+              <circle cx="12" cy="12" r="10" strokeWidth={2} />
+              <path strokeLinecap="round" strokeWidth={2} d="M12 8v4l3 3" />
+            </svg>
+            <span style={{ fontSize: "0.75rem", color: "#64748b" }}>Server: api.captoneproject101.online</span>
+          </div>
         </div>
 
         <div style={{ borderTop: "1px solid #e2e8f0", paddingTop: "0.875rem" }}>
@@ -226,12 +249,16 @@ export default function DeviceTab() {
   const [success, setSuccess] = useState("");
   const [deleting, setDeleting] = useState(false);
   const [showWifiPw, setShowWifiPw] = useState(false);
+  
+  // Validation states
+  const [addNameError, setAddNameError] = useState("");
+  const [editNameError, setEditNameError] = useState("");
 
   const [addForm, setAddForm] = useState({
-    name: "", wifi_ssid: "", wifi_password: "", server_url: "", scan_cooldown: 3000,
+    name: "", wifi_ssid: "", wifi_password: "", scan_cooldown: 3000,
   });
   const [editForm, setEditForm] = useState({
-    name: "", wifi_ssid: "", wifi_password: "", server_url: "", scan_cooldown: 3000,
+    name: "", wifi_ssid: "", wifi_password: "", scan_cooldown: 3000,
   });
 
   useSocket({
@@ -270,28 +297,105 @@ export default function DeviceTab() {
     return new Date(ts).toLocaleTimeString();
   };
 
+  // Check if device name already exists (excluding current device when editing)
+  const isDeviceNameDuplicate = (name: string, excludeId?: number): boolean => {
+    const trimmedName = name.trim().toLowerCase();
+    return devices.some(device => 
+      device.name.toLowerCase() === trimmedName && 
+      (excludeId === undefined || device.id !== excludeId)
+    );
+  };
+
+  // Validate add form name
+  const validateAddName = (name: string) => {
+    if (!name.trim()) {
+      setAddNameError("Device name is required");
+      return false;
+    }
+    if (isDeviceNameDuplicate(name)) {
+      setAddNameError("A device with this name already exists");
+      return false;
+    }
+    setAddNameError("");
+    return true;
+  };
+
+  // Validate edit form name
+  const validateEditName = (name: string) => {
+    if (!selected) return false;
+    if (!name.trim()) {
+      setEditNameError("Device name is required");
+      return false;
+    }
+    if (isDeviceNameDuplicate(name, selected.id)) {
+      setEditNameError("A device with this name already exists");
+      return false;
+    }
+    setEditNameError("");
+    return true;
+  };
+
+  const handleAddNameChange = (name: string) => {
+    setAddForm(prev => ({ ...prev, name }));
+    validateAddName(name);
+  };
+
+  const handleEditNameChange = (name: string) => {
+    setEditForm(prev => ({ ...prev, name }));
+    validateEditName(name);
+  };
+
   const handleAdd = async (e: React.FormEvent) => {
     e.preventDefault();
+    
+    // Validate name before submitting
+    if (!validateAddName(addForm.name)) {
+      return;
+    }
+    
     setProcessing(true);
     try {
-      const res = await api.post("/devices", addForm);
+      const res = await api.post("/devices", {
+        ...addForm,
+        server_url: HARDCODED_SERVER_URL,
+      });
       setDevices(prev => [res.data, ...prev]);
       closeModal();
-      setAddForm({ name: "", wifi_ssid: "", wifi_password: "", server_url: "", scan_cooldown: 3000 });
-    } catch { }
+      setAddForm({ name: "", wifi_ssid: "", wifi_password: "", scan_cooldown: 3000 });
+      setAddNameError("");
+    } catch (err: any) {
+      // Handle backend duplicate error
+      if (err.response?.data?.message?.includes("name")) {
+        setAddNameError("A device with this name already exists");
+      }
+    }
     finally { setProcessing(false); }
   };
 
   const handleEdit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selected) return;
+    
+    // Validate name before submitting
+    if (!validateEditName(editForm.name)) {
+      return;
+    }
+    
     setProcessing(true);
     setSuccess("");
     try {
-      await api.put(`/devices/${selected.id}`, editForm);
-      setDevices(prev => prev.map(d => d.id === selected.id ? { ...d, ...editForm } : d));
+      await api.put(`/devices/${selected.id}`, {
+        ...editForm,
+        server_url: HARDCODED_SERVER_URL,
+      });
+      setDevices(prev => prev.map(d => d.id === selected.id ? { ...d, ...editForm, server_url: HARDCODED_SERVER_URL } : d));
       setSuccess("Device updated! ESP32 will use new config on next boot.");
-    } catch { }
+      setEditNameError("");
+    } catch (err: any) {
+      if (err.response?.data?.message?.includes("name")) {
+        setEditNameError("A device with this name already exists");
+      }
+    }
     finally { setProcessing(false); }
   };
 
@@ -313,9 +417,9 @@ export default function DeviceTab() {
       name: device.name,
       wifi_ssid: device.wifi_ssid ?? "",
       wifi_password: device.wifi_password ?? "",
-      server_url: device.server_url ?? "",
       scan_cooldown: device.scan_cooldown,
     });
+    setEditNameError("");
     setSuccess("");
     setModalMode("edit");
   };
@@ -325,6 +429,8 @@ export default function DeviceTab() {
     setSelected(null);
     setSuccess("");
     setShowWifiPw(false);
+    setAddNameError("");
+    setEditNameError("");
   };
 
   const setAdd = (k: string, v: string | number) => setAddForm(p => ({ ...p, [k]: v }));
@@ -349,7 +455,7 @@ export default function DeviceTab() {
           <span style={{ background: "rgba(255,255,255,0.15)", borderRadius: "9999px", padding: "0.25rem 0.75rem", fontSize: "0.75rem", fontWeight: 600 }}>
             {pairedCount}/{devices.length} paired
           </span>
-          <button onClick={() => { setModalMode("add"); setSuccess(""); }}
+          <button onClick={() => { setModalMode("add"); setSuccess(""); setAddNameError(""); }}
             style={{ background: "#ffd700", border: "none", color: "#003366", padding: "0.5rem 1rem", borderRadius: "0.5rem", fontSize: "0.8rem", fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", gap: "0.4rem", transition: "background 0.2s" }}
             onMouseEnter={e => (e.currentTarget.style.background = "#fbbf24")}
             onMouseLeave={e => (e.currentTarget.style.background = "#ffd700")}>
@@ -417,7 +523,26 @@ export default function DeviceTab() {
               <form onSubmit={handleAdd} style={{ padding: "1.5rem", display: "flex", flexDirection: "column", gap: "1.1rem" }}>
                 <div>
                   <label style={labelStyle}>Device Name *</label>
-                  <input type="text" value={addForm.name} onChange={e => setAdd("name", e.target.value)} required placeholder="e.g. Scanner Room 1" style={inputStyle} onFocus={focus} onBlur={blur} />
+                  <input 
+                    type="text" 
+                    value={addForm.name} 
+                    onChange={e => handleAddNameChange(e.target.value)} 
+                    required 
+                    placeholder="e.g. Scanner Room 1" 
+                    style={addNameError ? inputErrorStyle : inputStyle} 
+                    onFocus={focus} 
+                    onBlur={blur} 
+                  />
+                  {addNameError && (
+                    <div style={errorTextStyle}>
+                      <svg width="12" height="12" fill="none" stroke="#dc2626" viewBox="0 0 24 24">
+                        <circle cx="12" cy="12" r="10" strokeWidth={2} />
+                        <line x1="12" y1="8" x2="12" y2="12" />
+                        <line x1="12" y1="16" x2="12.01" y2="16" />
+                      </svg>
+                      {addNameError}
+                    </div>
+                  )}
                 </div>
                 <div>
                   <label style={labelStyle}>WiFi SSID *</label>
@@ -433,23 +558,32 @@ export default function DeviceTab() {
                   </div>
                 </div>
                 <div>
-                  <label style={labelStyle}>Server URL *</label>
-                  <input type="text" value={addForm.server_url} onChange={e => setAdd("server_url", e.target.value)} required placeholder="http://192.168.x.x:8000/api/scan" style={inputStyle} onFocus={focus} onBlur={blur} />
-                  <p style={{ fontSize: "0.7rem", color: "#64748b", marginTop: "0.3rem" }}>Run <code style={{ background: "#f1f5f9", padding: "0.1rem 0.3rem", borderRadius: "0.25rem" }}>ipconfig</code> to find your local IP</p>
-                </div>
-                <div>
                   <label style={labelStyle}>Scan Cooldown (ms)</label>
                   <input type="number" value={addForm.scan_cooldown} onChange={e => setAdd("scan_cooldown", parseInt(e.target.value))} min={1000} max={10000} step={500} style={inputStyle} onFocus={focus} onBlur={blur} />
                   <p style={{ fontSize: "0.7rem", color: "#64748b", marginTop: "0.3rem" }}>{addForm.scan_cooldown / 1000}s between scans</p>
                 </div>
+
+                {/* Display hardcoded server info */}
+                <div style={{ background: "#eef2ff", borderRadius: "0.5rem", padding: "0.625rem 0.875rem", marginTop: "0.5rem" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginBottom: "0.25rem" }}>
+                    <svg width="14" height="14" fill="none" stroke="#003366" viewBox="0 0 24 24">
+                      <circle cx="12" cy="12" r="10" strokeWidth={2} />
+                      <path strokeLinecap="round" strokeWidth={2} d="M12 8v4l3 3" />
+                    </svg>
+                    <span style={{ fontSize: "0.7rem", fontWeight: 600, color: "#003366" }}>Server URL (hardcoded):</span>
+                  </div>
+                  <code style={{ fontSize: "0.7rem", color: "#1e293b", wordBreak: "break-all" }}>{HARDCODED_SERVER_URL}</code>
+                  <p style={{ fontSize: "0.65rem", color: "#64748b", marginTop: "0.375rem", marginBottom: 0 }}>This server URL is pre-configured. ESP32 will use this endpoint automatically.</p>
+                </div>
+
                 <div style={{ display: "flex", justifyContent: "flex-end", gap: "0.625rem", paddingTop: "0.5rem" }}>
                   <button type="button" onClick={closeModal} style={{ padding: "0.625rem 1rem", border: "1px solid #e2e8f0", borderRadius: "0.5rem", background: "none", fontSize: "0.875rem", fontWeight: 600, color: "#64748b", cursor: "pointer", transition: "background 0.2s" }}
                     onMouseEnter={e => (e.currentTarget.style.background = "#f8fafc")}
                     onMouseLeave={e => (e.currentTarget.style.background = "none")}>Cancel</button>
-                  <button type="submit" disabled={processing}
-                    style={{ padding: "0.625rem 1.25rem", background: processing ? "#cbd5e1" : "#003366", color: "#fff", border: "none", borderRadius: "0.5rem", fontSize: "0.875rem", fontWeight: 600, cursor: processing ? "not-allowed" : "pointer", display: "flex", alignItems: "center", gap: "0.4rem", transition: "background 0.2s" }}
-                    onMouseEnter={e => !processing && (e.currentTarget.style.background = "#004c99")}
-                    onMouseLeave={e => !processing && (e.currentTarget.style.background = "#003366")}>
+                  <button type="submit" disabled={processing || !!addNameError}
+                    style={{ padding: "0.625rem 1.25rem", background: (processing || addNameError) ? "#cbd5e1" : "#003366", color: "#fff", border: "none", borderRadius: "0.5rem", fontSize: "0.875rem", fontWeight: 600, cursor: (processing || addNameError) ? "not-allowed" : "pointer", display: "flex", alignItems: "center", gap: "0.4rem", transition: "background 0.2s" }}
+                    onMouseEnter={e => !processing && !addNameError && (e.currentTarget.style.background = "#004c99")}
+                    onMouseLeave={e => !processing && !addNameError && (e.currentTarget.style.background = "#003366")}>
                     {processing
                       ? <><div style={{ width: "0.875rem", height: "0.875rem", border: "2px solid #fff", borderTopColor: "transparent", borderRadius: "50%", animation: "spin 0.7s linear infinite" }} />Creating...</>
                       : <>Create & Show QR</>}
@@ -473,7 +607,25 @@ export default function DeviceTab() {
                 </div>
                 <div>
                   <label style={labelStyle}>Device Name *</label>
-                  <input type="text" value={editForm.name} onChange={e => setEdit("name", e.target.value)} required style={inputStyle} onFocus={focus} onBlur={blur} />
+                  <input 
+                    type="text" 
+                    value={editForm.name} 
+                    onChange={e => handleEditNameChange(e.target.value)} 
+                    required 
+                    style={editNameError ? inputErrorStyle : inputStyle} 
+                    onFocus={focus} 
+                    onBlur={blur} 
+                  />
+                  {editNameError && (
+                    <div style={errorTextStyle}>
+                      <svg width="12" height="12" fill="none" stroke="#dc2626" viewBox="0 0 24 24">
+                        <circle cx="12" cy="12" r="10" strokeWidth={2} />
+                        <line x1="12" y1="8" x2="12" y2="12" />
+                        <line x1="12" y1="16" x2="12.01" y2="16" />
+                      </svg>
+                      {editNameError}
+                    </div>
+                  )}
                 </div>
                 <div>
                   <label style={labelStyle}>WiFi SSID</label>
@@ -487,10 +639,6 @@ export default function DeviceTab() {
                       <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d={showWifiPw ? "M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21" : "M15 12a3 3 0 11-6 0 3 3 0 016 0zM2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"} /></svg>
                     </button>
                   </div>
-                </div>
-                <div>
-                  <label style={labelStyle}>Server URL</label>
-                  <input type="text" value={editForm.server_url} onChange={e => setEdit("server_url", e.target.value)} placeholder="http://192.168.x.x:8000/api/scan" style={inputStyle} onFocus={focus} onBlur={blur} />
                 </div>
                 <div>
                   <label style={labelStyle}>Scan Cooldown (ms)</label>
@@ -517,10 +665,10 @@ export default function DeviceTab() {
                     <button type="button" onClick={closeModal} style={{ padding: "0.5rem 1rem", border: "1px solid #e2e8f0", borderRadius: "0.5rem", background: "none", fontSize: "0.875rem", fontWeight: 600, color: "#64748b", cursor: "pointer", transition: "background 0.2s" }}
                       onMouseEnter={e => (e.currentTarget.style.background = "#f8fafc")}
                       onMouseLeave={e => (e.currentTarget.style.background = "none")}>Cancel</button>
-                    <button type="submit" disabled={processing}
-                      style={{ padding: "0.5rem 1.25rem", background: processing ? "#cbd5e1" : "#003366", color: "#fff", border: "none", borderRadius: "0.5rem", fontSize: "0.875rem", fontWeight: 600, cursor: processing ? "not-allowed" : "pointer", display: "flex", alignItems: "center", gap: "0.4rem", transition: "background 0.2s" }}
-                      onMouseEnter={e => !processing && (e.currentTarget.style.background = "#004c99")}
-                      onMouseLeave={e => !processing && (e.currentTarget.style.background = "#003366")}>
+                    <button type="submit" disabled={processing || !!editNameError}
+                      style={{ padding: "0.5rem 1.25rem", background: (processing || editNameError) ? "#cbd5e1" : "#003366", color: "#fff", border: "none", borderRadius: "0.5rem", fontSize: "0.875rem", fontWeight: 600, cursor: (processing || editNameError) ? "not-allowed" : "pointer", display: "flex", alignItems: "center", gap: "0.4rem", transition: "background 0.2s" }}
+                      onMouseEnter={e => !processing && !editNameError && (e.currentTarget.style.background = "#004c99")}
+                      onMouseLeave={e => !processing && !editNameError && (e.currentTarget.style.background = "#003366")}>
                       {processing
                         ? <><div style={{ width: "0.875rem", height: "0.875rem", border: "2px solid #fff", borderTopColor: "transparent", borderRadius: "50%", animation: "spin 0.7s linear infinite" }} />Saving...</>
                         : <>Save Config</>}

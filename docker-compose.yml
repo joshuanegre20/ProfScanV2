@@ -103,8 +103,8 @@ services:
       - ./frontend-react:/app
       - /app/node_modules
     environment:
-      VITE_API_URL:    http://192.168.0.103:8000
-      VITE_SOCKET_URL: http://192.168.0.103:3001
+      VITE_API_URL: https://api.captoneproject101.online
+      VITE_SOCKET_URL: https://socket.captoneproject101.online
     networks:
       - profscan
 

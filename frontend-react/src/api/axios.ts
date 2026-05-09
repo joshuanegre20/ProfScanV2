@@ -21,7 +21,7 @@
 //export default api
 import axios from "axios"
 const api = axios.create({
-  baseURL: `${import.meta.env.VITE_API_URL ?? "http://192.168.0.103:8000"}/api`,
+ baseURL: `${import.meta.env.VITE_API_URL ?? "https://api.captoneproject101.online"}/api`,
 });
 
 // attach token

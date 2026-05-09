@@ -23,27 +23,43 @@ console.log("✅ Final Socket URL:", SOCKET_URL);
 
 let _socket: Socket | null = null;
 const _joinedRooms = new Set<string>();
+let reconnectAttempts = 0;
+const MAX_RECONNECT_ATTEMPTS = 3;
 
 function getSocket(): Socket {
-  if (!_socket || !_socket.connected) {
+  if (!_socket) {
     console.log(`🔄 Creating new socket connection to: ${SOCKET_URL}`);
     
     _socket = io(SOCKET_URL, {
-      transports: ["websocket", "polling"],
+      // Use ONLY polling - works better with Cloudflare Tunnel
+      transports: ["polling"],
       reconnection: true,
-      reconnectionAttempts: Infinity,
-      reconnectionDelay: 2000,
-      timeout: 10000,
+      reconnectionAttempts: MAX_RECONNECT_ATTEMPTS,
+      reconnectionDelay: 3000,
+      reconnectionDelayMax: 10000,
+      timeout: 20000,
+      // Prevent upgrade to WebSocket
+      upgrade: false,
     });
     
     _socket.on("connect", () => {
       console.log("✅ Socket connected successfully to:", SOCKET_URL);
       _joinedRooms.clear();
+      reconnectAttempts = 0;
+    });
+    
+    _socket.on("disconnect", (reason) => {
+      console.log("🔌 Socket disconnected:", reason);
     });
     
     _socket.on("connect_error", (error) => {
-      console.error("❌ Socket connection error to:", SOCKET_URL);
-      console.error("❌ Error:", error.message);
+      reconnectAttempts++;
+      console.warn(`⚠️ Socket connection error (${reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS}):`, error.message);
+      
+      if (reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
+        console.warn("⚠️ Max reconnection attempts reached. Stopping reconnection.");
+        _socket?.disconnect();
+      }
     });
   }
   return _socket;
@@ -87,8 +103,9 @@ export function useSocket(options: UseSocketOptions = {}): UseSocketReturn {
   } = options;
   
   const socketRef = useRef<Socket>(getSocket());
-  const [isConnected, setIsConnected] = useState(socketRef.current.connected);
+  const [isConnected, setIsConnected] = useState(false);
   const [connectionError, setConnectionError] = useState<string | null>(null);
+  const hasJoinedRoom = useRef(false);
 
   const onScanRef             = useRef(onScan);
   const onScheduleUpdateRef   = useRef(onScheduleUpdate);
@@ -102,17 +119,18 @@ export function useSocket(options: UseSocketOptions = {}): UseSocketReturn {
   const onDeviceUpdateRef     = useRef(onDeviceUpdate);
   const onLogsUpdateRef       = useRef(onLogsUpdate);
 
-  useEffect(() => { onScanRef.current             = onScan;             });
-  useEffect(() => { onScheduleUpdateRef.current   = onScheduleUpdate;   });
+  // Update refs when callbacks change
+  useEffect(() => { onScanRef.current = onScan; });
+  useEffect(() => { onScheduleUpdateRef.current = onScheduleUpdate; });
   useEffect(() => { onAttendanceUpdateRef.current = onAttendanceUpdate; });
-  useEffect(() => { onEventUpdateRef.current      = onEventUpdate;      });
-  useEffect(() => { onActivityUpdateRef.current   = onActivityUpdate;   });
-  useEffect(() => { onDeviceStatusRef.current     = onDeviceStatus;     });
-  useEffect(() => { onStatsUpdateRef.current      = onStatsUpdate;      });
+  useEffect(() => { onEventUpdateRef.current = onEventUpdate; });
+  useEffect(() => { onActivityUpdateRef.current = onActivityUpdate; });
+  useEffect(() => { onDeviceStatusRef.current = onDeviceStatus; });
+  useEffect(() => { onStatsUpdateRef.current = onStatsUpdate; });
   useEffect(() => { onInstructorUpdateRef.current = onInstructorUpdate; });
-  useEffect(() => { onStaffUpdateRef.current      = onStaffUpdate;      });
-  useEffect(() => { onDeviceUpdateRef.current     = onDeviceUpdate;     });
-  useEffect(() => { onLogsUpdateRef.current       = onLogsUpdate;       });
+  useEffect(() => { onStaffUpdateRef.current = onStaffUpdate; });
+  useEffect(() => { onDeviceUpdateRef.current = onDeviceUpdate; });
+  useEffect(() => { onLogsUpdateRef.current = onLogsUpdate; });
 
   useEffect(() => {
     const s = socketRef.current;
@@ -120,9 +138,11 @@ export function useSocket(options: UseSocketOptions = {}): UseSocketReturn {
     const handleConnect = () => {
       setIsConnected(true);
       setConnectionError(null);
-      console.log("✅ Socket connected, joining room:", room);
+      console.log("✅ Socket connected");
       
-      if (room) {
+      // Join room after connection
+      if (room && !hasJoinedRoom.current) {
+        hasJoinedRoom.current = true;
         if (room === "admin") {
           s.emit("join-admin");
           console.log("📡 Joined admin room");
@@ -139,80 +159,65 @@ export function useSocket(options: UseSocketOptions = {}): UseSocketReturn {
     const handleDisconnect = (reason: string) => {
       setIsConnected(false);
       console.log("🔌 Socket disconnected:", reason);
-      if (reason === "io server disconnect") {
-        s.connect();
-      }
+      hasJoinedRoom.current = false;
     };
 
     const handleConnectError = (err: Error) => {
       setIsConnected(false);
       setConnectionError(err.message);
-      console.error("❌ Socket connection error:", err.message);
-      console.error("📍 Attempted URL:", SOCKET_URL);
+      console.warn("⚠️ Socket connection error:", err.message);
     };
 
-    const joinRoom = () => {
-      if (!room) return;
-      if (_joinedRooms.has(room)) return;
-      _joinedRooms.add(room);
-      if (room === "admin") {
-        s.emit("join-admin");
-      } else if (room === "staff") {
-        s.emit("join-staff");
-      } else if (room.startsWith("device-")) {
-        s.emit("join-device", room.replace("device-", ""));
-      }
-    };
-
+    // Set up event listeners
     s.on("connect", handleConnect);
     s.on("disconnect", handleDisconnect);
     s.on("connect_error", handleConnectError);
-    
-    joinRoom();
-    s.on("connect", joinRoom);
 
-    const handleScan             = (data: any) => onScanRef.current?.(data);
-    const handleScheduleUpdate   = (data: any) => onScheduleUpdateRef.current?.(data);
+    // Check if already connected
+    if (s.connected) {
+      handleConnect();
+    }
+
+    // Event handlers
+    const handleScan = (data: any) => onScanRef.current?.(data);
+    const handleScheduleUpdate = (data: any) => onScheduleUpdateRef.current?.(data);
     const handleAttendanceUpdate = (data: any) => onAttendanceUpdateRef.current?.(data);
-    const handleEventUpdate      = (data: any) => onEventUpdateRef.current?.(data);
-    const handleActivityUpdate   = (data: any) => onActivityUpdateRef.current?.(data);
-    const handleDeviceStatus     = (data: any) => onDeviceStatusRef.current?.(data);
-    const handleStatsUpdate      = (data: any) => onStatsUpdateRef.current?.(data);
+    const handleEventUpdate = (data: any) => onEventUpdateRef.current?.(data);
+    const handleActivityUpdate = (data: any) => onActivityUpdateRef.current?.(data);
+    const handleDeviceStatus = (data: any) => onDeviceStatusRef.current?.(data);
+    const handleStatsUpdate = (data: any) => onStatsUpdateRef.current?.(data);
     const handleInstructorUpdate = (data: any) => onInstructorUpdateRef.current?.(data);
-    const handleStaffUpdate      = (data: any) => onStaffUpdateRef.current?.(data);
-    const handleDeviceUpdate     = (data: any) => onDeviceUpdateRef.current?.(data);
-    const handleLogsUpdate       = (data: any) => onLogsUpdateRef.current?.(data);
+    const handleStaffUpdate = (data: any) => onStaffUpdateRef.current?.(data);
+    const handleDeviceUpdate = (data: any) => onDeviceUpdateRef.current?.(data);
+    const handleLogsUpdate = (data: any) => onLogsUpdateRef.current?.(data);
 
-    s.on("scan",              handleScan);
-    s.on("schedule-update",   handleScheduleUpdate);
+    s.on("scan", handleScan);
+    s.on("schedule-update", handleScheduleUpdate);
     s.on("attendance-update", handleAttendanceUpdate);
-    s.on("event-update",      handleEventUpdate);
-    s.on("activity-update",   handleActivityUpdate);
-    s.on("device-status",     handleDeviceStatus);
-    s.on("stats-update",      handleStatsUpdate);
+    s.on("event-update", handleEventUpdate);
+    s.on("activity-update", handleActivityUpdate);
+    s.on("device-status", handleDeviceStatus);
+    s.on("stats-update", handleStatsUpdate);
     s.on("instructor-update", handleInstructorUpdate);
-    s.on("staff-update",      handleStaffUpdate);
-    s.on("device-update",     handleDeviceUpdate);
-    s.on("logs-update",       handleLogsUpdate);
-
-    setIsConnected(s.connected);
+    s.on("staff-update", handleStaffUpdate);
+    s.on("device-update", handleDeviceUpdate);
+    s.on("logs-update", handleLogsUpdate);
 
     return () => {
-      s.off("connect",          handleConnect);
-      s.off("disconnect",       handleDisconnect);
-      s.off("connect_error",    handleConnectError);
-      s.off("connect",          joinRoom);
-      s.off("scan",              handleScan);
-      s.off("schedule-update",   handleScheduleUpdate);
+      s.off("connect", handleConnect);
+      s.off("disconnect", handleDisconnect);
+      s.off("connect_error", handleConnectError);
+      s.off("scan", handleScan);
+      s.off("schedule-update", handleScheduleUpdate);
       s.off("attendance-update", handleAttendanceUpdate);
-      s.off("event-update",      handleEventUpdate);
-      s.off("activity-update",   handleActivityUpdate);
-      s.off("device-status",     handleDeviceStatus);
-      s.off("stats-update",      handleStatsUpdate);
+      s.off("event-update", handleEventUpdate);
+      s.off("activity-update", handleActivityUpdate);
+      s.off("device-status", handleDeviceStatus);
+      s.off("stats-update", handleStatsUpdate);
       s.off("instructor-update", handleInstructorUpdate);
-      s.off("staff-update",      handleStaffUpdate);
-      s.off("device-update",     handleDeviceUpdate);
-      s.off("logs-update",       handleLogsUpdate);
+      s.off("staff-update", handleStaffUpdate);
+      s.off("device-update", handleDeviceUpdate);
+      s.off("logs-update", handleLogsUpdate);
     };
   }, [room]);
 

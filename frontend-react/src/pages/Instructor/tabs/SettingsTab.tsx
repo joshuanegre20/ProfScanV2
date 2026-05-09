@@ -21,6 +21,7 @@ export default function SettingsTab() {
     department: "", 
     specialization: "" 
   });
+  const [originalEmail, setOriginalEmail] = useState("");
   const [passwords, setPasswords] = useState({ 
     current: "", 
     new_password: "", 
@@ -34,7 +35,7 @@ export default function SettingsTab() {
   const [isVerifying, setIsVerifying] = useState(false);
   const [verificationMessage, setVerificationMessage] = useState("");
   const [resendTimer, setResendTimer] = useState(0);
-  const [verificationType, setVerificationType] = useState<'verify' | 'change'>('verify');
+  const [isSendingOtp, setIsSendingOtp] = useState(false);
   
   const [saving, setSaving] = useState(false);
   const [savingPw, setSavingPw] = useState(false);
@@ -54,6 +55,7 @@ export default function SettingsTab() {
     try {
       const res = await api.get("/instructor/me");
       setInstructor(res.data);
+      setOriginalEmail(res.data.email);
       setForm({
         name: res.data.name || "",
         email: res.data.email || "",
@@ -65,53 +67,64 @@ export default function SettingsTab() {
     }
   };
 
-  // Open verification modal and send code
-  const openVerificationModal = async (type: 'verify' | 'change', newEmail?: string) => {
-    setVerificationType(type);
-    setVerificationCode("");
-    setVerificationMessage("");
-    setShowVerificationModal(true);
+  // Send verification email for current email
+  const sendVerificationEmail = async () => {
+    if (!instructor) {
+      alert("No instructor data found. Please refresh the page.");
+      return;
+    }
     
-    // Generate OTP
+    if (instructor.is_verified) {
+      alert("Your email is already verified!");
+      return;
+    }
+    
+    setIsSendingOtp(true);
+    setVerificationMessage("");
+    
     const otp = Math.floor(100000 + Math.random() * 900000);
     setGeneratedOtp(otp);
     
     try {
-      // Use the correct endpoint for sending verification code
       const response = await api.post("/auth/send-verification-code", {
-        email: type === 'change' ? (newEmail || form.email) : instructor?.email,
+        email: instructor.email,
         otp: otp,
       });
       
       if (response.data.success) {
-        setVerificationMessage("Verification code sent! Please check your email.");
+        setVerificationMessage(`✓ Verification code sent to ${instructor.email}! Please check your email.`);
         setResendTimer(60);
+        setShowVerificationModal(true);
+        setVerificationCode("");
       } else {
-        setVerificationMessage(response.data.message || "Failed to send verification code");
+        alert(response.data.message || "Failed to send verification code");
       }
     } catch (error: any) {
       console.error("Send verification error:", error);
-      setVerificationMessage(error.response?.data?.message || "Failed to send verification code");
-      setGeneratedOtp(null);
+      alert(error.response?.data?.message || "Failed to send verification code");
+    } finally {
+      setIsSendingOtp(false);
     }
   };
 
+  // Resend verification code
   const resendVerificationCode = async () => {
-    if (resendTimer > 0) return;
+    if (resendTimer > 0 || !instructor) return;
     
     setVerificationMessage("");
+    setIsSendingOtp(true);
+    
     const otp = Math.floor(100000 + Math.random() * 900000);
     setGeneratedOtp(otp);
     
     try {
-      // Use the correct endpoint for resending verification code
-      const response = await api.post("/auth/send-verification-code", {
-        email: verificationType === 'change' ? form.email : instructor?.email,
+      const response = await api.post("/auth/resend-verification", {
+        email: instructor.email,
         otp: otp,
       });
       
       if (response.data.success) {
-        setVerificationMessage("New verification code sent!");
+        setVerificationMessage("✓ New verification code sent! Please check your email.");
         setResendTimer(60);
       } else {
         setVerificationMessage(response.data.message || "Failed to resend code");
@@ -119,10 +132,15 @@ export default function SettingsTab() {
     } catch (error: any) {
       console.error("Resend verification error:", error);
       setVerificationMessage(error.response?.data?.message || "Failed to resend code");
+    } finally {
+      setIsSendingOtp(false);
     }
   };
 
-  const verifyAndProcess = async () => {
+  // Verify the OTP for current email
+  const verifyEmail = async () => {
+    if (!instructor) return;
+    
     if (!verificationCode || verificationCode.length !== 6) {
       setVerificationMessage("Please enter a valid 6-digit code");
       return;
@@ -137,77 +155,69 @@ export default function SettingsTab() {
     setVerificationMessage("");
 
     try {
-      if (verificationType === 'verify') {
-        // Verify email using the verify endpoint
-        const response = await api.post("/auth/verify-email", {
-          email: instructor?.email,
-          otp: parseInt(verificationCode),
-          verified: true,
-        });
+      const response = await api.post("/auth/verify-email", {
+        email: instructor.email,
+        otp: parseInt(verificationCode),
+      });
 
-        if (response.data.success) {
-          setVerificationMessage("Email verified successfully!");
-          setTimeout(() => {
-            setShowVerificationModal(false);
-            setVerificationCode("");
-            setGeneratedOtp(null);
-            fetchInstructorData();
-          }, 1500);
-        } else {
-          setVerificationMessage(response.data.message || "Verification failed");
-        }
+      if (response.data.success) {
+        setVerificationMessage("✓ Email verified successfully!");
+        setTimeout(() => {
+          setShowVerificationModal(false);
+          setVerificationCode("");
+          setGeneratedOtp(null);
+          fetchInstructorData();
+        }, 1500);
       } else {
-        // First update profile with new email
-        const updateResponse = await api.put("/instructor/profile", form);
-        
-        if (updateResponse.data.success) {
-          // Then verify the new email
-          const verifyResponse = await api.post("/auth/verify-email", {
-            email: form.email,
-            otp: parseInt(verificationCode),
-            verified: true,
-          });
-          
-          if (verifyResponse.data.success) {
-            setVerificationMessage("Email verified and profile updated successfully!");
-            setTimeout(() => {
-              setShowVerificationModal(false);
-              setVerificationCode("");
-              setGeneratedOtp(null);
-              fetchInstructorData();
-            }, 1500);
-          } else {
-            setVerificationMessage(verifyResponse.data.message || "Verification failed");
-          }
-        } else {
-          setVerificationMessage(updateResponse.data.message || "Failed to update profile");
-        }
+        setVerificationMessage(response.data.message || "Verification failed");
       }
     } catch (error: any) {
       console.error("Verification error:", error);
-      setVerificationMessage(error.response?.data?.message || "Operation failed");
+      setVerificationMessage(error.response?.data?.message || "Verification failed");
     } finally {
       setIsVerifying(false);
     }
   };
 
+  // Save profile - FIXED: Use correct endpoint for instructor
   const handleProfileSave = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    // Check if email has been changed
-    if (form.email !== instructor?.email) {
-      // Open modal with change verification type
-      await openVerificationModal('change', form.email);
+    if (instructor?.is_verified && form.email !== originalEmail) {
+      alert("Email cannot be changed once verified. Please contact administrator for assistance.");
+      setForm(prev => ({ ...prev, email: originalEmail }));
       return;
     }
 
-    // If no email change, save directly
     setSaving(true);
     try {
-      const response = await api.put("/instructor/profile", form);
+      // Use the instructor profile endpoint, not staff
+      const response = await api.put("/instructor/profile", {
+        name: form.name,
+        email: form.email,
+        department: form.department,
+        specialization: form.specialization,
+      });
+      
       if (response.data.success) {
-        alert("Profile updated successfully!");
-        fetchInstructorData();
+        const updatedUser = response.data.user;
+        
+        setInstructor(updatedUser);
+        setOriginalEmail(updatedUser.email);
+        setForm({
+          name: updatedUser.name || "",
+          email: updatedUser.email || "",
+          department: updatedUser.department || "",
+          specialization: updatedUser.specialization || "",
+        });
+        
+        if (form.email !== originalEmail) {
+          alert(`Profile updated! Your email has been changed to ${form.email}. Please verify your new email address.`);
+        } else {
+          alert("Profile updated successfully!");
+        }
+        
+        await fetchInstructorData();
       } else {
         alert(response.data.message || "Failed to update profile.");
       }
@@ -219,6 +229,7 @@ export default function SettingsTab() {
     }
   };
 
+  // Change password - FIXED: Use correct endpoint
   const handlePasswordSave = async (e: React.FormEvent) => {
     e.preventDefault();
     if (passwords.new_password !== passwords.confirm) {
@@ -235,6 +246,7 @@ export default function SettingsTab() {
       await api.post("/instructor/change-password", {
         current_password: passwords.current,
         new_password: passwords.new_password,
+        new_password_confirmation: passwords.confirm,
       });
       setPasswords({ current: "", new_password: "", confirm: "" });
       alert("Password changed successfully!");
@@ -278,6 +290,8 @@ export default function SettingsTab() {
   }
 
   const isEmailVerified = instructor.is_verified;
+  const emailChanged = form.email !== originalEmail;
+  const canEditEmail = !isEmailVerified;
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "1.5rem" }}>
@@ -315,72 +329,31 @@ export default function SettingsTab() {
             <div>
               <label style={labelStyle}>
                 Email Address *
-                {isEmailVerified ? (
-                  <span style={{ marginLeft: "0.5rem", fontSize: "0.7rem", color: "#16a34a" }}>(Verified)</span>
-                ) : (
-                  <span style={{ marginLeft: "0.5rem", fontSize: "0.7rem", color: "#f59e0b" }}>(Unverified)</span>
+                {isEmailVerified && (
+                  <span style={{ marginLeft: "0.5rem", fontSize: "0.7rem", color: "#16a34a" }}>(Locked - Verified)</span>
                 )}
               </label>
-              <div style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>
-                <input
-                  type="email"
-                  value={form.email}
-                  onChange={e => setForm({ ...form, email: e.target.value })}
-                  style={{ ...inputStyle, flex: 1 }}
-                  required
-                />
-                {!isEmailVerified && (
-                  <button
-                    type="button"
-                    onClick={() => openVerificationModal('verify')}
-                    style={{
-                      padding: "0.625rem 1rem",
-                      background: "#f59e0b",
-                      color: "#fff",
-                      border: "none",
-                      borderRadius: "0.5rem",
-                      fontSize: "0.75rem",
-                      fontWeight: 500,
-                      cursor: "pointer",
-                      whiteSpace: "nowrap",
-                      display: "flex",
-                      alignItems: "center",
-                      gap: "0.25rem",
-                    }}
-                  >
-                    <svg width="12" height="12" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
-                    </svg>
-                    Verify Email
-                  </button>
-                )}
-                {isEmailVerified && (
-                  <div style={{
-                    padding: "0.625rem 1rem",
-                    background: "#f0fdf4",
-                    border: "1px solid #bbf7d0",
-                    borderRadius: "0.5rem",
-                    fontSize: "0.75rem",
-                    fontWeight: 500,
-                    color: "#16a34a",
-                    whiteSpace: "nowrap",
-                    display: "flex",
-                    alignItems: "center",
-                    gap: "0.25rem",
-                  }}>
-                    <svg width="12" height="12" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                    </svg>
-                    Verified
-                  </div>
-                )}
-              </div>
-              {form.email !== instructor?.email && (
-                <p style={{ fontSize: "0.75rem", color: "#f59e0b", marginTop: "0.5rem", display: "flex", alignItems: "center", gap: "0.25rem" }}>
-                  <svg width="12" height="12" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-                  </svg>
-                  You'll need to verify this new email address before saving
+              <input
+                type="email"
+                value={form.email}
+                onChange={e => setForm({ ...form, email: e.target.value })}
+                style={{
+                  ...inputStyle,
+                  background: canEditEmail ? "#fff" : "#f8fafc",
+                  cursor: canEditEmail ? "text" : "not-allowed",
+                  color: canEditEmail ? "#1e293b" : "#94a3b8"
+                }}
+                required
+                disabled={!canEditEmail}
+              />
+              {!canEditEmail && (
+                <p style={{ fontSize: "0.7rem", color: "#16a34a", marginTop: "0.5rem" }}>
+                  ✓ Email is verified and locked. Contact administrator to change it.
+                </p>
+              )}
+              {canEditEmail && emailChanged && (
+                <p style={{ fontSize: "0.7rem", color: "#f59e0b", marginTop: "0.25rem" }}>
+                  ⚠️ Email changed. You will need to verify this new email address.
                 </p>
               )}
             </div>
@@ -424,6 +397,90 @@ export default function SettingsTab() {
               Instructor ID is automatically generated and cannot be changed
             </p>
           </div>
+
+          {/* Email Verification Section */}
+          {!isEmailVerified && (
+            <div style={{ 
+              marginBottom: "1.5rem", 
+              padding: "1rem", 
+              background: "#fef3c7",
+              borderRadius: "0.5rem",
+              border: "1px solid #fde68a"
+            }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: "1rem" }}>
+                <div>
+                  <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                    <svg width="20" height="20" fill="none" stroke="#d97706" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                    </svg>
+                    <span style={{ fontWeight: 600, color: "#d97706" }}>
+                      Email Not Verified
+                    </span>
+                  </div>
+                  <p style={{ fontSize: "0.75rem", color: "#92400e", marginTop: "0.25rem", marginBottom: 0 }}>
+                    Please verify your email address ({instructor.email}) to lock your email and access all features.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={sendVerificationEmail}
+                  disabled={isSendingOtp}
+                  style={{
+                    padding: "0.5rem 1rem",
+                    background: isSendingOtp ? "#d1d5db" : "#d97706",
+                    color: "#fff",
+                    border: "none",
+                    borderRadius: "0.5rem",
+                    fontSize: "0.75rem",
+                    fontWeight: 500,
+                    cursor: isSendingOtp ? "not-allowed" : "pointer",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "0.375rem",
+                    transition: "background 0.2s",
+                  }}
+                  onMouseEnter={(e) => { if (!isSendingOtp) e.currentTarget.style.background = "#b45309"; }}
+                  onMouseLeave={(e) => { if (!isSendingOtp) e.currentTarget.style.background = "#d97706"; }}
+                >
+                  {isSendingOtp ? (
+                    <>
+                      <div style={{ width: "0.75rem", height: "0.75rem", border: "2px solid #fff", borderTopColor: "transparent", borderRadius: "50%", animation: "spin 0.7s linear infinite" }} />
+                      Sending...
+                    </>
+                  ) : (
+                    <>
+                      <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                      </svg>
+                      Verify Email
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+          )}
+
+          {isEmailVerified && (
+            <div style={{ 
+              marginBottom: "1.5rem", 
+              padding: "1rem", 
+              background: "#f0fdf4",
+              borderRadius: "0.5rem",
+              border: "1px solid #bbf7d0"
+            }}>
+              <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                <svg width="20" height="20" fill="none" stroke="#16a34a" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                <span style={{ fontWeight: 600, color: "#16a34a" }}>
+                  Email Verified
+                </span>
+              </div>
+              <p style={{ fontSize: "0.75rem", color: "#166534", marginTop: "0.25rem", marginBottom: 0 }}>
+                Your email {instructor.email} has been verified. Email changes are now locked for security.
+              </p>
+            </div>
+          )}
 
           <div style={{ display: "flex", justifyContent: "flex-end" }}>
             <button
@@ -496,7 +553,7 @@ export default function SettingsTab() {
               required
             />
           </div>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1rem", marginBottom: "1.5rem" }}>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1rem", marginBottom: "1.5rem", color: "black" }}>
             <div>
               <label style={labelStyle}>New Password *</label>
               <input
@@ -562,7 +619,7 @@ export default function SettingsTab() {
       </div>
 
       {/* Verification Modal */}
-      {showVerificationModal && (
+      {showVerificationModal && instructor && (
         <div style={{
           position: "fixed",
           top: 0,
@@ -601,13 +658,16 @@ export default function SettingsTab() {
                 </svg>
               </div>
               <h3 style={{ margin: "0 0 0.5rem", fontSize: "1.25rem", fontWeight: 600, color: "#1e293b" }}>
-                {verificationType === 'verify' ? 'Email Verification Required' : 'Verify New Email Address'}
+                Email Verification Required
               </h3>
               <p style={{ color: "#64748b", fontSize: "0.875rem", margin: 0 }}>
                 We've sent a 6-digit verification code to
               </p>
               <p style={{ color: "#003366", fontWeight: 500, fontSize: "0.875rem", marginTop: "0.25rem" }}>
-                {verificationType === 'change' ? form.email : instructor.email}
+                {instructor.email}
+              </p>
+              <p style={{ color: "#64748b", fontSize: "0.75rem", marginTop: "0.5rem" }}>
+                Once verified, your email will be locked and cannot be changed.
               </p>
             </div>
 
@@ -637,9 +697,9 @@ export default function SettingsTab() {
                 marginTop: "1rem",
                 padding: "0.75rem",
                 borderRadius: "0.5rem",
-                background: verificationMessage.includes("success") || verificationMessage.includes("sent") ? "#f0fdf4" : "#fef2f2",
-                border: verificationMessage.includes("success") || verificationMessage.includes("sent") ? "1px solid #bbf7d0" : "1px solid #fecaca",
-                color: verificationMessage.includes("success") || verificationMessage.includes("sent") ? "#166534" : "#991b1b",
+                background: verificationMessage.includes("✓") ? "#f0fdf4" : "#fef2f2",
+                border: verificationMessage.includes("✓") ? "1px solid #bbf7d0" : "1px solid #fecaca",
+                color: verificationMessage.includes("✓") ? "#166534" : "#991b1b",
                 fontSize: "0.875rem",
                 textAlign: "center",
               }}>
@@ -670,7 +730,7 @@ export default function SettingsTab() {
                 Cancel
               </button>
               <button
-                onClick={verifyAndProcess}
+                onClick={verifyEmail}
                 disabled={isVerifying || verificationCode.length !== 6}
                 style={{
                   flex: 1,
@@ -692,20 +752,18 @@ export default function SettingsTab() {
             <div style={{ marginTop: "1rem", textAlign: "center" }}>
               <button
                 onClick={resendVerificationCode}
-                disabled={resendTimer > 0}
+                disabled={resendTimer > 0 || isSendingOtp}
                 style={{
                   background: "none",
                   border: "none",
                   color: "#003366",
-                  cursor: resendTimer > 0 ? "not-allowed" : "pointer",
+                  cursor: (resendTimer > 0 || isSendingOtp) ? "not-allowed" : "pointer",
                   fontSize: "0.875rem",
                   fontWeight: 500,
-                  opacity: resendTimer > 0 ? 0.5 : 1,
+                  opacity: (resendTimer > 0 || isSendingOtp) ? 0.5 : 1,
                 }}
               >
-                {resendTimer > 0
-                  ? `Resend code in ${resendTimer}s`
-                  : "Resend verification code"}
+                {isSendingOtp ? "Sending..." : (resendTimer > 0 ? `Resend code in ${resendTimer}s` : "Resend verification code")}
               </button>
             </div>
           </div>

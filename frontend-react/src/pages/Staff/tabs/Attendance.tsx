@@ -70,6 +70,11 @@ export default function MyAttendanceTab() {
   const [profileModal, setProfileModal] = useState<Instructor | null>(null);
   const [search, setSearch] = useState("");
   const [selectedInstructor, setSelectedInstructor] = useState<string>("");
+  
+  // Pagination states
+  const [currentPage, setCurrentPage] = useState(1);
+  const [itemsPerPage, setItemsPerPage] = useState(10);
+  const itemsPerPageOptions = [5, 10, 20, 50];
 
   useEffect(() => { fetchInstructors(); }, []);
   useEffect(() => { fetchLogs(); }, [selectedMonth]);
@@ -100,7 +105,16 @@ export default function MyAttendanceTab() {
     try {
       const res = await api.get("/instructor/attendance-logs", { params: { month: selectedMonth } });
       const data: AttendanceLog[] = res.data?.data ?? res.data ?? [];
-      setLogs(Array.isArray(data) ? data : []);
+      // Sort by date (newest first) and then by time_in
+      const sorted = Array.isArray(data) ? data.sort((a, b) => {
+        const dateCompare = b.date.localeCompare(a.date);
+        if (dateCompare !== 0) return dateCompare;
+        const timeA = a.time_in || "00:00";
+        const timeB = b.time_in || "00:00";
+        return timeB.localeCompare(timeA);
+      }) : [];
+      setLogs(sorted);
+      setCurrentPage(1); // Reset to first page when data changes
     } catch { setLogs([]); }
     finally { setLoading(false); }
   };
@@ -119,6 +133,13 @@ export default function MyAttendanceTab() {
     return matchesSearch && matchesInstructor;
   });
 
+  // Pagination calculations
+  const totalItems = filteredLogs.length;
+  const totalPages = Math.ceil(totalItems / itemsPerPage);
+  const startIndex = (currentPage - 1) * itemsPerPage;
+  const endIndex = startIndex + itemsPerPage;
+  const currentLogs = filteredLogs.slice(startIndex, endIndex);
+
   const present = filteredLogs.filter(l => l.status?.toLowerCase() === "present").length;
   const absent  = filteredLogs.filter(l => l.status?.toLowerCase() === "absent").length;
   const excused = filteredLogs.filter(l => l.status?.toLowerCase() === "excused").length;
@@ -129,6 +150,35 @@ export default function MyAttendanceTab() {
     return [log.instructor_id, instr?.name || log.instructor_id];
   })).entries()].map(([id, name]) => ({ id, name }));
 
+  // Generate page numbers to display
+  const getPageNumbers = () => {
+    const pages = [];
+    const maxVisible = 5;
+    let startPage = Math.max(1, currentPage - Math.floor(maxVisible / 2));
+    let endPage = Math.min(totalPages, startPage + maxVisible - 1);
+    
+    if (endPage - startPage + 1 < maxVisible) {
+      startPage = Math.max(1, endPage - maxVisible + 1);
+    }
+    
+    for (let i = startPage; i <= endPage; i++) {
+      pages.push(i);
+    }
+    return pages;
+  };
+
+  const goToPage = (page: number) => {
+    if (page >= 1 && page <= totalPages) {
+      setCurrentPage(page);
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+  };
+
+  const getMonthName = (monthStr: string) => {
+    const [year, month] = monthStr.split('-');
+    return new Date(parseInt(year), parseInt(month) - 1).toLocaleDateString('en-PH', { month: 'long', year: 'numeric' });
+  };
+
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "1.5rem" }}>
 
@@ -137,7 +187,7 @@ export default function MyAttendanceTab() {
         <div>
           <h2 style={{ fontSize: "1rem", fontWeight: 600, color: "#1e293b" }}>Attendance History</h2>
           <p style={{ fontSize: "0.8rem", color: "#64748b", marginTop: "0.125rem" }}>
-            All records · click instructor name to view profile
+            Showing records for {getMonthName(selectedMonth)}
             <span style={{ marginLeft: "0.5rem", fontSize: "0.7rem", background: "#dcfce7", color: "#15803d", border: "1px solid #bbf7d0", borderRadius: "999px", padding: "1px 6px" }}>
               Live · Socket
             </span>
@@ -176,7 +226,7 @@ export default function MyAttendanceTab() {
         </select>
         {(search || selectedInstructor) && (
           <button
-            onClick={() => { setSearch(""); setSelectedInstructor(""); }}
+            onClick={() => { setSearch(""); setSelectedInstructor(""); setCurrentPage(1); }}
             style={{ padding: "0.5rem 1rem", border: "1px solid #e2e8f0", borderRadius: "0.5rem", background: "#fff", color: "#64748b", fontSize: "0.8rem", cursor: "pointer" }}
           >
             Clear Filters
@@ -190,7 +240,7 @@ export default function MyAttendanceTab() {
           { label: "Present", value: present, color: "#15803d", icon: "✅" },
           { label: "Absent", value: absent, color: "#dc2626", icon: "❌" },
           { label: "Excused", value: excused, color: "#b45309", icon: "📝" },
-          { label: "Total", value: filteredLogs.length, color: "#003366", icon: "📊" },
+          { label: "Total", value: totalItems, color: "#003366", icon: "📊" },
         ].map(s => (
           <div key={s.label} style={{ ...glassCardStyle, padding: "1.25rem", textAlign: "center", borderBottom: `3px solid ${s.color}` }}>
             <p style={{ fontSize: "0.75rem", color: "#64748b" }}>{s.icon} {s.label}</p>
@@ -199,140 +249,270 @@ export default function MyAttendanceTab() {
         ))}
       </div>
 
+      {/* Items Per Page Selector */}
+      <div style={{ display: "flex", justifyContent: "flex-end", alignItems: "center", gap: "0.75rem" }}>
+        <span style={{ fontSize: "0.75rem", color: "#64748b" }}>Show:</span>
+        <select
+          value={itemsPerPage}
+          onChange={(e) => { setItemsPerPage(Number(e.target.value)); setCurrentPage(1); }}
+          style={{ padding: "0.375rem 0.75rem", border: "1px solid #e2e8f0", borderRadius: "0.375rem", fontSize: "0.75rem", outline: "none", background: "#fff", color: "#1e293b", cursor: "pointer" }}
+        >
+          {itemsPerPageOptions.map(option => (
+            <option key={option} value={option}>{option} per page</option>
+          ))}
+        </select>
+      </div>
+
       {/* Attendance Cards */}
       {loading ? (
         <div style={{ display: "flex", justifyContent: "center", alignItems: "center", gap: "0.5rem", padding: "3rem", color: "#94a3b8" }}>
           <div style={{ width: "1.25rem", height: "1.25rem", border: "2px solid #003366", borderTopColor: "transparent", borderRadius: "50%", animation: "spin 0.7s linear infinite" }} />
           Loading attendance records...
         </div>
-      ) : filteredLogs.length === 0 ? (
+      ) : currentLogs.length === 0 ? (
         <div style={{ ...glassCardStyle, padding: "3rem", textAlign: "center" }}>
-          <p style={{ color: "#64748b" }}>No attendance records found for {new Date(selectedMonth + "-01").toLocaleDateString("en-PH", { month: "long", year: "numeric" })}</p>
+          <p style={{ color: "#64748b" }}>No attendance records found for {getMonthName(selectedMonth)}</p>
         </div>
       ) : (
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(380px, 1fr))", gap: "1rem" }}>
-          {filteredLogs.map((log) => {
-            const instr = getInstructor(log.instructor_id);
-            const status = log.status?.toLowerCase();
-            
-            return (
-              <div
-                key={log.id}
-                style={{
-                  ...glassCardStyle,
-                  borderLeft: `4px solid ${status === "present" ? "#22c55e" : status === "absent" ? "#ef4444" : status === "excused" ? "#f59e0b" : "#64748b"}`,
-                  transition: "transform 0.2s, box-shadow 0.2s",
-                }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.transform = "translateY(-2px)";
-                  e.currentTarget.style.boxShadow = "0 8px 25px -5px rgba(0,0,0,0.1)";
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.transform = "translateY(0)";
-                  e.currentTarget.style.boxShadow = "0 1px 3px rgba(0,0,0,0.08)";
-                }}
-              >
-                <div style={{ padding: "1rem" }}>
-                  {/* Header with Date and Status */}
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "0.75rem" }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
-                      <span style={{
-                        background: "#f1f5f9",
-                        padding: "0.25rem 0.75rem",
-                        borderRadius: "9999px",
-                        fontSize: "0.75rem",
-                        fontWeight: 600,
-                        color: "#64748b",
-                      }}>
-                        📅 {log.date}
-                      </span>
-                      {log.day && (
+        <>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(380px, 1fr))", gap: "1rem" }}>
+            {currentLogs.map((log) => {
+              const instr = getInstructor(log.instructor_id);
+              const status = log.status?.toLowerCase();
+              
+              return (
+                <div
+                  key={log.id}
+                  style={{
+                    ...glassCardStyle,
+                    borderLeft: `4px solid ${status === "present" ? "#22c55e" : status === "absent" ? "#ef4444" : status === "excused" ? "#f59e0b" : "#64748b"}`,
+                    transition: "transform 0.2s, box-shadow 0.2s",
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.transform = "translateY(-2px)";
+                    e.currentTarget.style.boxShadow = "0 8px 25px -5px rgba(0,0,0,0.1)";
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.transform = "translateY(0)";
+                    e.currentTarget.style.boxShadow = "0 1px 3px rgba(0,0,0,0.08)";
+                  }}
+                >
+                  <div style={{ padding: "1rem" }}>
+                    {/* Header with Date and Status */}
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "0.75rem" }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
                         <span style={{
-                          padding: "0.25rem 0.5rem",
-                          borderRadius: "0.375rem",
-                          fontSize: "0.7rem",
+                          background: "#f1f5f9",
+                          padding: "0.25rem 0.75rem",
+                          borderRadius: "9999px",
+                          fontSize: "0.75rem",
                           fontWeight: 600,
-                          background: "#e0e7ff",
-                          color: "#4338ca",
+                          color: "#64748b",
                         }}>
-                          {log.day}
+                          📅 {log.date}
                         </span>
+                        {log.day && (
+                          <span style={{
+                            padding: "0.25rem 0.5rem",
+                            borderRadius: "0.375rem",
+                            fontSize: "0.7rem",
+                            fontWeight: 600,
+                            background: "#e0e7ff",
+                            color: "#4338ca",
+                          }}>
+                            {log.day}
+                          </span>
+                        )}
+                      </div>
+                      <span style={statusStyle(log.status)}>
+                        {status === "present" ? "✅ Present" : status === "absent" ? "❌ Absent" : status === "excused" ? "📝 Excused" : log.status}
+                      </span>
+                    </div>
+
+                    {/* Instructor Info */}
+                    <div 
+                      style={{ marginBottom: "0.75rem", cursor: instr ? "pointer" : "default" }}
+                      onClick={() => instr && setProfileModal(instr)}
+                    >
+                      <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
+                        <Avatar src={instr ? (photoCache[instr.id] ?? null) : null} name={instr?.name ?? log.instructor_id} size={48} />
+                        <div>
+                          <h3 style={{ fontSize: "1rem", fontWeight: 700, color: "#1e293b", marginBottom: "0.25rem" }}>
+                            {instr?.name ?? log.instructor_id}
+                          </h3>
+                          <p style={{ fontSize: "0.7rem", color: "#3b82f6", fontFamily: "monospace" }}>
+                            {log.instructor_id}
+                          </p>
+                          {instr?.department && (
+                            <p style={{ fontSize: "0.65rem", color: "#64748b", marginTop: "0.125rem" }}>
+                              {instr.department}
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Subject, Room & Block */}
+                    <div style={{ marginBottom: "0.75rem", padding: "0.5rem", background: "#f8fafc", borderRadius: "0.5rem" }}>
+                      <p style={{ fontSize: "0.875rem", fontWeight: 600, color: "#1e293b", marginBottom: "0.25rem" }}>
+                        {log.subject || "No subject"}
+                      </p>
+                      {log.code && (
+                        <p style={{ fontSize: "0.7rem", color: "#64748b", fontFamily: "monospace", marginBottom: "0.25rem" }}>
+                          Code: {log.code}
+                        </p>
+                      )}
+                      {log.room && (
+                        <p style={{ fontSize: "0.7rem", color: "#64748b", display: "flex", alignItems: "center", gap: "0.25rem", marginBottom: "0.25rem" }}>
+                          <svg width="12" height="12" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+                          </svg>
+                          Room {log.room}
+                        </p>
+                      )}
+                      {log.block && (
+                        <p style={{ fontSize: "0.7rem", color: "#003366", display: "flex", alignItems: "center", gap: "0.25rem", marginTop: "0.25rem", fontWeight: 500 }}>
+                          📚 Block: {log.block}
+                        </p>
                       )}
                     </div>
-                    <span style={statusStyle(log.status)}>
-                      {status === "present" ? "✅ Present" : status === "absent" ? "❌ Absent" : status === "excused" ? "📝 Excused" : log.status}
-                    </span>
-                  </div>
 
-                  {/* Instructor Info */}
-                  <div 
-                    style={{ marginBottom: "0.75rem", cursor: instr ? "pointer" : "default" }}
-                    onClick={() => instr && setProfileModal(instr)}
-                  >
-                    <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
-                      <Avatar src={instr ? (photoCache[instr.id] ?? null) : null} name={instr?.name ?? log.instructor_id} size={48} />
+                    {/* Time Info */}
+                    <div style={{ display: "flex", gap: "1rem", justifyContent: "space-between", alignItems: "center", paddingTop: "0.5rem", borderTop: "1px solid #e2e8f0" }}>
                       <div>
-                        <h3 style={{ fontSize: "1rem", fontWeight: 700, color: "#1e293b", marginBottom: "0.25rem" }}>
-                          {instr?.name ?? log.instructor_id}
-                        </h3>
-                        <p style={{ fontSize: "0.7rem", color: "#3b82f6", fontFamily: "monospace" }}>
-                          {log.instructor_id}
+                        <p style={{ fontSize: "0.7rem", color: "#64748b", marginBottom: "0.125rem" }}>Time In</p>
+                        <p style={{ fontSize: "0.875rem", fontWeight: 600, color: "#1e293b" }}>
+                          {log.time_in || "—"}
                         </p>
-                        {instr?.department && (
-                          <p style={{ fontSize: "0.65rem", color: "#64748b", marginTop: "0.125rem" }}>
-                            {instr.department}
-                          </p>
-                        )}
+                      </div>
+                      <div>
+                        <p style={{ fontSize: "0.7rem", color: "#64748b", marginBottom: "0.125rem" }}>Time Out</p>
+                        <p style={{ fontSize: "0.875rem", fontWeight: 600, color: "#1e293b" }}>
+                          {log.time_out || "—"}
+                        </p>
                       </div>
                     </div>
                   </div>
-
-                  {/* Subject, Room & Block */}
-                  <div style={{ marginBottom: "0.75rem", padding: "0.5rem", background: "#f8fafc", borderRadius: "0.5rem" }}>
-                    <p style={{ fontSize: "0.875rem", fontWeight: 600, color: "#1e293b", marginBottom: "0.25rem" }}>
-                      {log.subject || "No subject"}
-                    </p>
-                    {log.code && (
-                      <p style={{ fontSize: "0.7rem", color: "#64748b", fontFamily: "monospace", marginBottom: "0.25rem" }}>
-                        Code: {log.code}
-                      </p>
-                    )}
-                    {log.room && (
-                      <p style={{ fontSize: "0.7rem", color: "#64748b", display: "flex", alignItems: "center", gap: "0.25rem", marginBottom: "0.25rem" }}>
-                        <svg width="12" height="12" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
-                        </svg>
-                        Room {log.room}
-                      </p>
-                    )}
-                    {log.block && (
-                      <p style={{ fontSize: "0.7rem", color: "#003366", display: "flex", alignItems: "center", gap: "0.25rem", marginTop: "0.25rem", fontWeight: 500 }}>
-                        📚 Block: {log.block}
-                      </p>
-                    )}
-                  </div>
-
-                  {/* Time Info */}
-                  <div style={{ display: "flex", gap: "1rem", justifyContent: "space-between", alignItems: "center", paddingTop: "0.5rem", borderTop: "1px solid #e2e8f0" }}>
-                    <div>
-                      <p style={{ fontSize: "0.7rem", color: "#64748b", marginBottom: "0.125rem" }}>Time In</p>
-                      <p style={{ fontSize: "0.875rem", fontWeight: 600, color: "#1e293b" }}>
-                        {log.time_in || "—"}
-                      </p>
-                    </div>
-                    <div>
-                      <p style={{ fontSize: "0.7rem", color: "#64748b", marginBottom: "0.125rem" }}>Time Out</p>
-                      <p style={{ fontSize: "0.875rem", fontWeight: 600, color: "#1e293b" }}>
-                        {log.time_out || "—"}
-                      </p>
-                    </div>
-                  </div>
                 </div>
-              </div>
-            );
-          })}
-        </div>
+              );
+            })}
+          </div>
+
+          {/* Pagination */}
+          {totalPages > 1 && (
+            <div style={{ display: "flex", justifyContent: "center", alignItems: "center", gap: "0.5rem", marginTop: "1rem", flexWrap: "wrap" }}>
+              <button
+                onClick={() => goToPage(1)}
+                disabled={currentPage === 1}
+                style={{
+                  padding: "0.5rem 0.75rem",
+                  border: "1px solid #e2e8f0",
+                  borderRadius: "0.375rem",
+                  background: currentPage === 1 ? "#f1f5f9" : "#fff",
+                  color: currentPage === 1 ? "#94a3b8" : "#475569",
+                  cursor: currentPage === 1 ? "not-allowed" : "pointer",
+                  fontSize: "0.75rem",
+                  fontWeight: 500,
+                  transition: "all 0.2s",
+                }}
+              >
+                First
+              </button>
+              <button
+                onClick={() => goToPage(currentPage - 1)}
+                disabled={currentPage === 1}
+                style={{
+                  padding: "0.5rem 0.75rem",
+                  border: "1px solid #e2e8f0",
+                  borderRadius: "0.375rem",
+                  background: currentPage === 1 ? "#f1f5f9" : "#fff",
+                  color: currentPage === 1 ? "#94a3b8" : "#475569",
+                  cursor: currentPage === 1 ? "not-allowed" : "pointer",
+                  fontSize: "0.75rem",
+                  fontWeight: 500,
+                  transition: "all 0.2s",
+                }}
+              >
+                Previous
+              </button>
+              
+              {getPageNumbers().map(page => (
+                <button
+                  key={page}
+                  onClick={() => goToPage(page)}
+                  style={{
+                    padding: "0.5rem 0.875rem",
+                    border: currentPage === page ? "none" : "1px solid #e2e8f0",
+                    borderRadius: "0.375rem",
+                    background: currentPage === page ? "#003366" : "#fff",
+                    color: currentPage === page ? "#fff" : "#475569",
+                    cursor: "pointer",
+                    fontSize: "0.75rem",
+                    fontWeight: currentPage === page ? 600 : 500,
+                    transition: "all 0.2s",
+                  }}
+                  onMouseEnter={(e) => {
+                    if (currentPage !== page) {
+                      e.currentTarget.style.background = "#f8fafc";
+                      e.currentTarget.style.borderColor = "#cbd5e1";
+                    }
+                  }}
+                  onMouseLeave={(e) => {
+                    if (currentPage !== page) {
+                      e.currentTarget.style.background = "#fff";
+                      e.currentTarget.style.borderColor = "#e2e8f0";
+                    }
+                  }}
+                >
+                  {page}
+                </button>
+              ))}
+
+              <button
+                onClick={() => goToPage(currentPage + 1)}
+                disabled={currentPage === totalPages}
+                style={{
+                  padding: "0.5rem 0.75rem",
+                  border: "1px solid #e2e8f0",
+                  borderRadius: "0.375rem",
+                  background: currentPage === totalPages ? "#f1f5f9" : "#fff",
+                  color: currentPage === totalPages ? "#94a3b8" : "#475569",
+                  cursor: currentPage === totalPages ? "not-allowed" : "pointer",
+                  fontSize: "0.75rem",
+                  fontWeight: 500,
+                  transition: "all 0.2s",
+                }}
+              >
+                Next
+              </button>
+              <button
+                onClick={() => goToPage(totalPages)}
+                disabled={currentPage === totalPages}
+                style={{
+                  padding: "0.5rem 0.75rem",
+                  border: "1px solid #e2e8f0",
+                  borderRadius: "0.375rem",
+                  background: currentPage === totalPages ? "#f1f5f9" : "#fff",
+                  color: currentPage === totalPages ? "#94a3b8" : "#475569",
+                  cursor: currentPage === totalPages ? "not-allowed" : "pointer",
+                  fontSize: "0.75rem",
+                  fontWeight: 500,
+                  transition: "all 0.2s",
+                }}
+              >
+                Last
+              </button>
+            </div>
+          )}
+
+          {/* Showing results info */}
+          <div style={{ textAlign: "center", marginTop: "1rem" }}>
+            <p style={{ fontSize: "0.75rem", color: "#64748b" }}>
+              Showing {startIndex + 1} to {Math.min(endIndex, totalItems)} of {totalItems} records
+            </p>
+          </div>
+        </>
       )}
 
       {/* Profile Modal */}

@@ -107,14 +107,20 @@
 <body>
     <div class="container">
         <div class="header">
-            {{-- Option 1: If you have a logo file --}}
-            <img src="{{ asset('images/logo.png') }}" alt="ProfScan Logo" class="logo">
+            <!-- OPTION 1: Using external API URL (Best for production) -->
+            <img src="https://api.captoneproject101.online/api/logo" alt="ProfScan Logo" class="logo" style="display: block; margin: 0 auto;">
             
-            {{-- Option 2: If you want to use text instead of logo --}}
-            {{-- <h1>ProfScan</h1> --}}
+            <!-- OPTION 2: Using Laravel asset (if logo is stored locally) -->
+            {{-- <img src="{{ asset('storage/logo/tmclogo2.png') }}" alt="ProfScan Logo" class="logo"> --}}
             
-            {{-- Option 3: If you have a base64 encoded logo --}}
-            {{-- <img src="data:image/png;base64,{{ base64_encode(file_get_contents(public_path('images/logo.png'))) }}" alt="ProfScan Logo" class="logo"> --}}
+            <!-- OPTION 3: Using public path -->
+            {{-- <img src="{{ public_path('images/logo.png') }}" alt="ProfScan Logo" class="logo"> --}}
+            
+            <!-- Fallback text if logo fails to load -->
+            <div style="display: none;" class="logo-fallback">
+                <h1 style="color: #ffffff; margin: 0;">ProfScan</h1>
+                <p style="color: #ffd700; margin: 5px 0 0; font-size: 12px;">Trinidad Municipal College</p>
+            </div>
         </div>
         
         <div class="content">
@@ -137,14 +143,29 @@
             </div>
             
             <div style="text-align: center;">
-                <a href="{{ config('app.url') }}" class="button">Go to ProfScan</a>
+                <a href="https://web.captoneproject101.online/instructor/dashboard" class="button">Go to ProfScan</a>
             </div>
         </div>
         
         <div class="footer">
             <p>© {{ date('Y') }} ProfScan. All rights reserved.</p>
+            <p>Trinidad Municipal College</p>
             <p>If you have any questions, please contact our support team.</p>
         </div>
     </div>
+    
+    <script>
+        // Fallback: If logo fails to load, show text version
+        document.addEventListener('DOMContentLoaded', function() {
+            const logoImg = document.querySelector('.logo');
+            if (logoImg) {
+                logoImg.onerror = function() {
+                    this.style.display = 'none';
+                    const fallback = document.querySelector('.logo-fallback');
+                    if (fallback) fallback.style.display = 'block';
+                };
+            }
+        });
+    </script>
 </body>
 </html>

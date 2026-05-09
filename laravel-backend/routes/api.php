@@ -13,10 +13,19 @@ use App\Http\Controllers\StaffController;
 use App\Http\Controllers\SubjectController;
 use App\Http\Controllers\DepartmentController;
 use App\Http\Controllers\ActivityController;
+use App\Http\Controllers\SettingsController;
 
 // ── Public ────────────────────────────────────────────────────────
+
+Route::get('/test', fn() => response()->json(['message' => 'API works']));
+
+
 Route::get('/test', fn() => response()->json(['message' => 'API works']));
 Route::post('/login', [AuthController::class, 'login'])->name('login');
+Route::get('/carousel', [SettingsController::class, 'getCarouselItems']); 
+Route::get('/carousel-image/{filename}', [SettingsController::class, 'serveCarouselImage']); 
+Route::get('/login-images', [SettingsController::class, 'getLoginImages']);
+Route::get('/login-image/{filename}', [SettingsController::class, 'serveLoginImage']);
 
 Route::get('/logo', function () {
     $path = 'logo/tmclogo2.png';
@@ -27,6 +36,9 @@ Route::get('/logo', function () {
         ['Content-Type' => 'image/png', 'Cache-Control' => 'no-store']
     );
 });
+Route::post('/auth/send-reset-otp', [AuthController::class, 'sendResetOtp']);
+Route::post('/auth/verify-reset-otp', [AuthController::class, 'verifyResetOtp']);
+Route::post('/auth/reset-password', [AuthController::class, 'resetPassword']);
 
 // ── ESP32 (no auth) ───────────────────────────────────────────────
 Route::post('/scan',               [DeviceController::class, 'scan']);
@@ -48,7 +60,7 @@ Route::middleware('auth:api')->group(function () {
     
     Route::post('/auth/send-verification-code', [AuthController::class, 'sendVerificationCode']);
     Route::post('/auth/resend-verification', [AuthController::class, 'resendVerification']);
-     Route::post('/auth/verify-email', [AuthController::class, 'verifyEmail']);
+    Route::post('/auth/verify-email', [AuthController::class, 'verifyEmail']);
 
     // ── Admin: Dashboard ──────────────────────────────────────────
     Route::get('/admin/stats',              [DashboardController::class, 'stats']);
@@ -81,6 +93,12 @@ Route::middleware('auth:api')->group(function () {
     Route::get('/admin/instructors/{id}/photo',    [InstructorController::class, 'photo'])->name('api.instructor.photo');
     Route::get('/admin/instructors/{id}/scan-logs',       [InstructorController::class, 'getScanLogs']);
     Route::get('/admin/instructors/{id}/attendance-logs', [InstructorController::class, 'getAttendanceLogs']);
+
+    // Carousel admin routes (protected)
+    Route::post('/admin/carousel', [SettingsController::class, 'addCarouselItem']);
+    Route::put('/admin/carousel/{id}', [SettingsController::class, 'updateCarouselItem']);
+    Route::delete('/admin/carousel/{id}', [SettingsController::class, 'deleteCarouselItem']);
+    Route::post('/admin/carousel/reorder', [SettingsController::class, 'reorderCarouselItems']);
 
     // ── Admin: Events ─────────────────────────────────────────────
     Route::get('/admin/events',         [DashboardController::class, 'getEvents']);
@@ -121,9 +139,11 @@ Route::middleware('auth:api')->group(function () {
     Route::put('/staff/profile',    [InstructorController::class, 'staffUpdateProfile']);
     Route::get('/staff/attendance', [InstructorController::class, 'myAttendanceLogs']);
     Route::get('/staff/photo/me',   [InstructorController::class, 'staffPhoto']);
-
+    Route::post('/staff/change-password',[StaffController::class, 'changePassword']);
+    Route::post('/staff/avatar',    [StaffController::class, 'uploadAvatar']);
+    
     // ── Instructor: Portal ────────────────────────────────────────
-  Route::get('/instructor/me',               [AuthController::class, 'me']);
+    Route::get('/instructor/me',               [AuthController::class, 'me']);
     Route::put('/instructor/profile',          [InstructorController::class, 'updateProfile']);
     Route::post('/instructor/change-password', [InstructorController::class, 'changePassword']);
     Route::post('/instructor/avatar',          [InstructorController::class, 'updateAvatar']);
@@ -131,8 +151,18 @@ Route::middleware('auth:api')->group(function () {
     Route::get('/instructor/schedules',        [InstructorController::class, 'schedules']);
     Route::get('/instructor/scan-logs',        [InstructorController::class, 'myScanLogs']);
     Route::get('/instructor/attendance-logs',  [InstructorController::class, 'myAttendanceLogs']);
-     Route::get('/instructor/attendance-logs-me',  [InstructorController::class, 'myAttendanceLogsMe']);
+    Route::get('/instructor/attendance-logs-me',  [InstructorController::class, 'myAttendanceLogsMe']);
 
- Route::get('/admin/attendance/late-records', [InstructorController::class, 'getLateAttendanceLogs']);
-   Route::get('/admin/attendance/recent-absent', [InstructorController::class, 'getRecentAbsentLogs']);
+    Route::get('/admin/attendance/late-records', [InstructorController::class, 'getLateAttendanceLogs']);
+    Route::get('/admin/attendance/recent-absent', [InstructorController::class, 'getRecentAbsentLogs']);
+
+    Route::post('/admin/attendance/late-records/bulk-delete', [InstructorController::class, 'bulkDeleteLateRecords']);
+
+    // ----- Admin: Settings ─────────────────────────────
+    Route::get('/admin/settings', [SettingsController::class, 'index']);
+    Route::post('/admin/settings', [SettingsController::class, 'update']);
+    Route::post('/admin/login-images', [SettingsController::class, 'addLoginImage']);
+Route::put('/admin/login-images/{id}', [SettingsController::class, 'updateLoginImage']);
+Route::delete('/admin/login-images/{id}', [SettingsController::class, 'deleteLoginImage']);
+Route::post('/admin/login-images/{id}/set-active', [SettingsController::class, 'setActiveLoginImage']);
 });

@@ -98,6 +98,140 @@ interface LateLog {
   full_datetime?: string;
 }
 
+// SVG Icon Components
+const IconUsers = () => (
+  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ color: "black" }}>
+    <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
+    <circle cx="9" cy="7" r="4" />
+    <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
+    <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+  </svg>
+);
+
+const IconUserCheck = () => (
+  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ color: "black" }}>
+    <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
+    <circle cx="9" cy="7" r="4" />
+    <polyline points="16 11 18 13 22 9" />
+  </svg>
+);
+
+const IconCalendar = () => (
+  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ color: "black" }}>
+    <rect x="3" y="4" width="18" height="18" rx="2" ry="2" />
+    <line x1="16" y1="2" x2="16" y2="6" />
+    <line x1="8" y1="2" x2="8" y2="6" />
+    <line x1="3" y1="10" x2="21" y2="10" />
+  </svg>
+);
+
+const IconDevices = () => (
+  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <rect x="2" y="3" width="20" height="14" rx="2" ry="2" />
+    <line x1="8" y1="21" x2="16" y2="21" />
+    <line x1="12" y1="17" x2="12" y2="21" />
+  </svg>
+);
+
+const IconWifi = () => (
+  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M5 12.55a11 11 0 0 1 14.08 0" />
+    <path d="M1.42 9a16 16 0 0 1 21.16 0" />
+    <path d="M8.53 16.11a6 6 0 0 1 6.95 0" />
+    <line x1="12" y1="20" x2="12.01" y2="20" />
+  </svg>
+);
+
+const IconTrendingUp = () => (
+  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ color: "black" }}> 
+    <polyline points="23 6 13.5 15.5 8.5 10.5 1 18" />
+    <polyline points="17 6 23 6 23 12" />
+  </svg>
+);
+
+const IconPlus = () => (
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ color: "black" }}>
+    <line x1="12" y1="5" x2="12" y2="19" />
+    <line x1="5" y1="12" x2="19" y2="12" />
+  </svg>
+);
+
+const IconScan = () => (
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ color: "black" }}>
+    <path d="M3 7V5a2 2 0 0 1 2-2h2" />
+    <path d="M17 3h2a2 2 0 0 1 2 2v2" />
+    <path d="M21 17v2a2 2 0 0 1-2 2h-2" />
+    <path d="M7 21H5a2 2 0 0 1-2-2v-2" />
+    <circle cx="12" cy="12" r="3" />
+  </svg>
+);
+
+const IconClock = () => (
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ color: "black" }}>
+    <circle cx="12" cy="12" r="10" />
+    <polyline points="12 6 12 12 16 14" />
+  </svg>
+);
+
+const IconXCircle = () => (
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"style={{ color: "black" }}>
+    <circle cx="12" cy="12" r="10" />
+    <line x1="18" y1="6" x2="6" y2="18" />
+    <line x1="6" y1="6" x2="18" y2="18" />
+  </svg>
+);
+
+const IconCheckCircle = () => (
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#059669" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ color: "black" }}>
+    <circle cx="12" cy="12" r="10" />
+    <polyline points="12 16 16 12 12 8" />
+    <line x1="8" y1="12" x2="16" y2="12" />
+  </svg>
+);
+
+const IconAlertCircle = () => (
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#d97706" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ color: "black" }}>
+    <circle cx="12" cy="12" r="10" />
+    <line x1="12" y1="8" x2="12" y2="12" />
+    <line x1="12" y1="16" x2="12.01" y2="16" />
+  </svg>
+);
+
+const IconActivity = () => (
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ color: "black" }}>
+    <polyline points="22 12 18 12 15 21 9 3 6 12 2 12" />
+  </svg>
+);
+
+const IconBarChart = () => (
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <line x1="18" y1="20" x2="18" y2="10" />
+    <line x1="12" y1="20" x2="12" y2="4" />
+    <line x1="6" y1="20" x2="6" y2="14" />
+  </svg>
+);
+
+const IconLogOut = () => (
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+    <polyline points="16 17 21 12 16 7" />
+    <line x1="21" y1="12" x2="9" y2="12" />
+  </svg>
+);
+
+const IconArrowRight = () => (
+  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <line x1="5" y1="12" x2="19" y2="12" />
+    <polyline points="12 5 19 12 12 19" />
+  </svg>
+);
+
+const IconChevronRight = () => (
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ color: "black" }}>
+    <polyline points="9 18 15 12 9 6" />
+  </svg>
+);
+
 // ─── Styles ───────────────────────────────────────────────────────────────────
 
 const cardStyle: React.CSSProperties = {
@@ -959,17 +1093,34 @@ export default function DashboardTab({ setActiveTab }: Props) {
   };
   
   const getActivityIcon = (type: string) => {
-    const icons: Record<string, string> = {
-      scan: "📱", create: "➕", update: "✏️", delete: "🗑️",
-      login: "🔐", logout: "🚪", security_change: "🔒", status_change: "🔄",
-      event_create: "📅", event_update: "📅", event_delete: "📅",
-      schedule_create: "⏰", schedule_delete: "⏰", subject_create: "📚",
-      subject_update: "📚", subject_delete: "📚", department_create: "🏛️",
-      department_update: "🏛️", department_delete: "🏛️", staff_create: "👤",
-      staff_delete: "👤", staff_status_change: "👤", profile_update: "👤",
-      absent: "❌", late: "⏰"
+    const icons: Record<string, React.ReactNode> = {
+      scan: <IconScan />,
+      create: <IconPlus />,
+      update: <IconActivity />,
+      delete: <IconXCircle />,
+      login: <IconLogOut />,
+      logout: <IconLogOut />,
+      security_change: <IconAlertCircle />,
+      status_change: <IconActivity />,
+      event_create: <IconCalendar />,
+      event_update: <IconCalendar />,
+      event_delete: <IconCalendar />,
+      schedule_create: <IconClock />,
+      schedule_delete: <IconClock />,
+      subject_create: <IconBarChart />,
+      subject_update: <IconBarChart />,
+      subject_delete: <IconBarChart />,
+      department_create: <IconUsers />,
+      department_update: <IconUsers />,
+      department_delete: <IconUsers />,
+      staff_create: <IconUserCheck />,
+      staff_delete: <IconUserCheck />,
+      staff_status_change: <IconUserCheck />,
+      profile_update: <IconUserCheck />,
+      absent: <IconXCircle />,
+      late: <IconAlertCircle />
     };
-    return icons[type] ?? "📋";
+    return icons[type] ?? <IconActivity />;
   };
   
   const getActivityColor = (type: string) => {
@@ -987,21 +1138,21 @@ export default function DashboardTab({ setActiveTab }: Props) {
   const currentAnalytics = getCurrentAnalytics();
 
   const statCards = [
-    { label:"Total Instructors", value:stats.total, color:"#3b82f6", bg:"#eff6ff", icon:"👥", sub:`${stats.active} active · ${stats.inactive} inactive`, clickable:true, type:"instructors" as const },
-    { label:"Active Instructors",value:stats.active, color:"#10b981", bg:"#ecfdf5", icon:"✅", sub:`${stats.active_rate}% active rate`, clickable:true, type:"instructors" as const },
-    { label:"Total Events", value:stats.total_events, color:"#8b5cf6", bg:"#f5f3ff", icon:"📅", sub:`${stats.upcoming_events} upcoming`, clickable:true, type:"events" as const },
-    { label:"Total Devices", value:totalDevices, color:"#06b6d4", bg:"#ecfeff", icon:"📱", sub:`${pairedDevices} paired · ${onlineDevices} online`, clickable:false },
-    { label:"Online Devices", value:onlineDevices, color:"#10b981", bg:"#ecfdf5", icon:"🟢", sub:`${totalDevices - onlineDevices} offline`, clickable:false },
-    { label:"Active Rate", value:stats.active_rate, color:"#f59e0b", bg:"#fffbeb", icon:"📊", sub:"Active instructors", clickable:true, type:"instructors" as const, isPercentage:true },
+    { label:"Total Instructors", value:stats.total, color:"#3b82f6", bg:"#eff6ff", icon:<IconUsers />, sub:`${stats.active} active · ${stats.inactive} inactive`, clickable:true, type:"instructors" as const },
+    { label:"Active Instructors",value:stats.active, color:"#10b981", bg:"#ecfdf5", icon:<IconUserCheck />, sub:`${stats.active_rate}% active rate`, clickable:true, type:"instructors" as const },
+    { label:"Total Events", value:stats.total_events, color:"#8b5cf6", bg:"#f5f3ff", icon:<IconCalendar />, sub:`${stats.upcoming_events} upcoming`, clickable:true, type:"events" as const },
+    { label:"Total Devices", value:totalDevices, color:"#06b6d4", bg:"#ecfeff", icon:<IconDevices />, sub:`${pairedDevices} paired · ${onlineDevices} online`, clickable:false },
+    { label:"Online Devices", value:onlineDevices, color:"#10b981", bg:"#ecfdf5", icon:<IconWifi />, sub:`${totalDevices - onlineDevices} offline`, clickable:false },
+    { label:"Active Rate", value:stats.active_rate, color:"#f59e0b", bg:"#fffbeb", icon:<IconTrendingUp />, sub:"Active instructors", clickable:true, type:"instructors" as const, isPercentage:true },
   ];
 
   const quickActions = [
-    { label:"Add Instructor", icon:"👨‍🏫", color:"#3b82f6", bg:"#eff6ff", tab:"add-instructor" },
-    { label:"Add Staff", icon:"👥", color:"#3b82f6", bg:"#eff6ff", tab:"add-staff" },
-    { label:"Add Subject", icon:"📚", color:"#3b82f6", bg:"#eff6ff", tab:"add-subject" },
-    { label:"Add Department", icon:"🏛️", color:"#3b82f6", bg:"#eff6ff", tab:"add-department" },
-    { label:"Manage Devices", icon:"🔌", color:"#3b82f6", bg:"#eff6ff", tab:"device" },
-    { label:"View Reports", icon:"📊", color:"#64748b", bg:"#f1f5f9", tab:null },
+    { label:"Add Instructor", icon:<IconUsers />, color:"#3b82f6", bg:"#eff6ff", tab:"add-instructor" },
+    { label:"Add Staff", icon:<IconUserCheck />, color:"#3b82f6", bg:"#eff6ff", tab:"add-staff" },
+    { label:"Add Subject", icon:<IconBarChart />, color:"#3b82f6", bg:"#eff6ff", tab:"add-subject" },
+    { label:"Add Department", icon:<IconUsers />, color:"#3b82f6", bg:"#eff6ff", tab:"add-department" },
+    { label:"Manage Devices", icon:<IconDevices />, color:"#3b82f6", bg:"#eff6ff", tab:"device" },
+    { label:"View Reports", icon:<IconTrendingUp />, color:"#64748b", bg:"#f1f5f9", tab:null },
   ];
 
   return (
@@ -1036,7 +1187,7 @@ export default function DashboardTab({ setActiveTab }: Props) {
             onMouseLeave={(e) => { e.currentTarget.style.transform="translateY(0)"; e.currentTarget.style.boxShadow="0 1px 3px rgba(0,0,0,0.05)"; }}
           >
             <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:"0.75rem" }}>
-              <span style={{ fontSize:"1.5rem" }}>{card.icon}</span>
+              <span style={{ fontSize:"1.25rem", display:"flex", alignItems:"center", color:card.color }}>{card.icon}</span>
               <span style={{ fontSize:"0.65rem", fontWeight:500, color:card.color, background:card.bg, padding:"0.2rem 0.6rem", borderRadius:"999px" }}>{card.label}</span>
             </div>
             <p style={{ fontSize:"1.5rem", fontWeight:700, color:"#0f172a", margin:"0 0 0.25rem" }}>
@@ -1049,11 +1200,11 @@ export default function DashboardTab({ setActiveTab }: Props) {
 
       {/* Attendance Analytics with Tabs */}
       <div style={cardStyle}>
-        <div style={{ padding:"1rem 1.25rem", borderBottom:"1px solid #e9eef3", background:"#f8fafc" }}>
+        <div style={{ padding:"1rem 1.25rem", borderBottom:"1px solid #e9eef3", background:"#f8fafc", color: "black" }}>
           <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", flexWrap:"wrap", gap:"1rem" }}>
             <div>
               <h3 style={{ fontSize:"0.9rem", fontWeight:600, color:"#0f172a", display:"flex", alignItems:"center", gap:"0.5rem", margin:0 }}>
-                <span>📊</span> Attendance Analytics <LiveIndicator />
+                <IconBarChart /> Attendance Analytics <LiveIndicator />
               </h3>
               <p style={{ fontSize:"0.7rem", color:"#64748b", marginTop:"0.25rem", marginBottom:0 }}>Track scans, absences, and late arrivals</p>
             </div>
@@ -1069,10 +1220,13 @@ export default function DashboardTab({ setActiveTab }: Props) {
                   cursor:"pointer",
                   background: analyticsType === "scans" ? "#3b82f6" : "transparent",
                   color: analyticsType === "scans" ? "#fff" : "#64748b",
-                  transition:"all 0.2s"
+                  transition:"all 0.2s",
+                  display:"flex",
+                  alignItems:"center",
+                  gap:"0.375rem"
                 }}
               >
-                ✅ Scans
+                <IconCheckCircle /> Scans
               </button>
               <button
                 onClick={() => handleTypeChange("absent")}
@@ -1085,10 +1239,13 @@ export default function DashboardTab({ setActiveTab }: Props) {
                   cursor:"pointer",
                   background: analyticsType === "absent" ? "#ef4444" : "transparent",
                   color: analyticsType === "absent" ? "#fff" : "#64748b",
-                  transition:"all 0.2s"
+                  transition:"all 0.2s",
+                  display:"flex",
+                  alignItems:"center",
+                  gap:"0.375rem"
                 }}
               >
-                ❌ Absent
+                <IconXCircle /> Absent
               </button>
               <button
                 onClick={() => handleTypeChange("late")}
@@ -1101,10 +1258,13 @@ export default function DashboardTab({ setActiveTab }: Props) {
                   cursor:"pointer",
                   background: analyticsType === "late" ? "#f59e0b" : "transparent",
                   color: analyticsType === "late" ? "#fff" : "#64748b",
-                  transition:"all 0.2s"
+                  transition:"all 0.2s",
+                  display:"flex",
+                  alignItems:"center",
+                  gap:"0.375rem"
                 }}
               >
-                ⏰ Late
+                <IconAlertCircle /> Late
               </button>
             </div>
             <select value={currentAnalytics.selectedMonth} onChange={(e) => handleMonthChange(e.target.value)}
@@ -1144,12 +1304,12 @@ export default function DashboardTab({ setActiveTab }: Props) {
       <div style={cardStyle}>
         <div style={{ padding:"1rem 1.25rem", borderBottom:"1px solid #e9eef3", display:"flex", justifyContent:"space-between", alignItems:"center" }}>
           <div>
-            <h3 style={{ fontSize:"0.9rem", fontWeight:600, color:"#0f172a", display:"flex", alignItems:"center", gap:"0.5rem", margin:0 }}><span>🔌</span> Device Status <LiveIndicator /></h3>
+            <h3 style={{ fontSize:"0.9rem", fontWeight:600, color:"#0f172a", display:"flex", alignItems:"center", gap:"0.5rem", margin:0 }}><IconDevices /> Device Status <LiveIndicator /></h3>
             <p style={{ fontSize:"0.7rem", color:"#64748b", marginTop:"0.25rem", marginBottom:0 }}>{onlineDevices} online · {pairedDevices}/{totalDevices} paired</p>
           </div>
-          <button onClick={() => setActiveTab("device")} style={{ padding:"0.4rem 1rem", background:"#fbbf24", color:"#fff", border:"none", borderRadius:"0.5rem", fontSize:"0.75rem", fontWeight:500, cursor:"pointer" }}
+          <button onClick={() => setActiveTab("device")} style={{ padding:"0.4rem 1rem", background:"#fbbf24", color:"#fff", border:"none", borderRadius:"0.5rem", fontSize:"0.75rem", fontWeight:500, cursor:"pointer", display:"flex", alignItems:"center", gap:"0.375rem" }}
             onMouseEnter={(e) => { e.currentTarget.style.background="#1e293b"; }} onMouseLeave={(e) => { e.currentTarget.style.background="#fbbf24"; }}>
-            Manage Devices →
+            Manage Devices <IconArrowRight />
           </button>
         </div>
         <div style={{ padding:"1rem 1.25rem" }}>
@@ -1173,8 +1333,9 @@ export default function DashboardTab({ setActiveTab }: Props) {
                 </div>
               ))}
               {devices.length > 4 && (
-                <div onClick={() => setActiveTab("device")} style={{ padding:"0.75rem", background:"#f8fafc", borderRadius:"0.5rem", textAlign:"center", cursor:"pointer", border:"1px dashed #cbd5e1" }}>
+                <div onClick={() => setActiveTab("device")} style={{ padding:"0.75rem", background:"#f8fafc", borderRadius:"0.5rem", textAlign:"center", cursor:"pointer", border:"1px dashed #cbd5e1", display:"flex", alignItems:"center", justifyContent:"center", gap:"0.375rem" }}>
                   <p style={{ color:"#3b82f6", fontSize:"0.75rem", margin:0 }}>+{devices.length - 4} more devices</p>
+                  <IconChevronRight />
                 </div>
               )}
             </div>
@@ -1188,7 +1349,7 @@ export default function DashboardTab({ setActiveTab }: Props) {
         {/* Recent Scans */}
         <div style={cardStyle}>
           <div style={{ padding:"1rem 1.25rem", borderBottom:"1px solid #e9eef3" }}>
-            <h3 style={{ fontSize:"0.9rem", fontWeight:600, color:"#0f172a", display:"flex", alignItems:"center", gap:"0.5rem", margin:0 }}><span>📱</span> Recent Scans <LiveIndicator /></h3>
+            <h3 style={{ fontSize:"0.9rem", fontWeight:600, color:"#0f172a", display:"flex", alignItems:"center", gap:"0.5rem", margin:0 }}><IconScan /> Recent Scans <LiveIndicator /></h3>
           </div>
           <div style={{ padding:"1rem 1.25rem" }}>
             {scansLoading ? (
@@ -1199,8 +1360,8 @@ export default function DashboardTab({ setActiveTab }: Props) {
               <div style={{ display:"flex", flexDirection:"column", gap:"1rem" }}>
                 {scans.slice(0, 10).map((s, i) => (
                   <div key={i} style={{ display:"flex", alignItems:"flex-start", gap:"0.75rem" }}>
-                    <div style={{ width:"2rem", height:"2rem", borderRadius:"0.5rem", background:s.scan_status==="Late"?"#fef3c7":"#dcfce7", display:"flex", alignItems:"center", justifyContent:"center", fontSize:"1rem" }}>
-                      {s.scan_status === "Late" ? "⏰" : "✅"}
+                    <div style={{ width:"2rem", height:"2rem", borderRadius:"0.5rem", background:s.scan_status==="Late"?"#fef3c7":"#dcfce7", display:"flex", alignItems:"center", justifyContent:"center" }}>
+                      {s.scan_status === "Late" ? <IconAlertCircle /> : <IconCheckCircle />}
                     </div>
                     <div style={{ flex:1 }}>
                       <p style={{ fontWeight:600, fontSize:"0.875rem", color:"#0f172a", margin:0 }}>{s.name}</p>
@@ -1226,7 +1387,7 @@ export default function DashboardTab({ setActiveTab }: Props) {
                 onMouseEnter={(e) => { if (!action.tab) return; e.currentTarget.style.background=action.bg; e.currentTarget.style.borderColor=action.color; e.currentTarget.style.transform="translateY(-2px)"; }}
                 onMouseLeave={(e) => { if (!action.tab) return; e.currentTarget.style.background="#fff"; e.currentTarget.style.borderColor="#e9eef3"; e.currentTarget.style.transform="translateY(0)"; }}
               >
-                <span style={{ fontSize:"1.25rem" }}>{action.icon}</span>
+                <span style={{ fontSize:"1rem", display:"flex", alignItems:"center" }}>{action.icon}</span>
                 {action.label}
               </button>
             ))}
@@ -1238,7 +1399,7 @@ export default function DashboardTab({ setActiveTab }: Props) {
       <div style={cardStyle}>
         <div style={{ padding:"1rem 1.25rem", borderBottom:"1px solid #e9eef3" }}>
           <h3 style={{ fontSize:"0.9rem", fontWeight:600, color:"#0f172a", display:"flex", alignItems:"center", gap:"0.5rem", margin:0 }}>
-            <span>❌</span> Recent Absent Records
+            <IconXCircle /> Recent Absent Records
           </h3>
         </div>
         <div style={{ padding:"1rem 1.25rem" }}>
@@ -1248,7 +1409,7 @@ export default function DashboardTab({ setActiveTab }: Props) {
             <div style={{ display:"flex", flexDirection:"column", gap:"0.75rem" }}>
               {absentLogs.slice(0, 10).map((log, i) => (
                 <div key={log.id || i} style={{ display:"flex", alignItems:"center", gap:"0.75rem", padding:"0.5rem", background:"#fef2f2", borderRadius:"0.5rem" }}>
-                  <span style={{ fontSize:"1.25rem" }}>❌</span>
+                  <IconXCircle />
                   <div style={{ flex:1 }}>
                     <p style={{ fontWeight:600, fontSize:"0.875rem", color:"#1e293b", margin:0 }}>{log.name}</p>
                     <p style={{ fontSize:"0.7rem", color:"#64748b", marginTop:"0.125rem", marginBottom:0 }}>
@@ -1267,8 +1428,8 @@ export default function DashboardTab({ setActiveTab }: Props) {
 
       {/* Recent Activities */}
       <div style={cardStyle}>
-        <div style={{ padding:"1rem 1.25rem", borderBottom:"1px solid #e9eef3" }}>
-          <h3 style={{ fontSize:"0.9rem", fontWeight:600, color:"#0f172a", display:"flex", alignItems:"center", gap:"0.5rem", margin:0 }}><span>📋</span> Recent Activities <LiveIndicator /></h3>
+        <div style={{ padding:"1rem 1.25rem", borderBottom:"1px solid #e9eef3"}}>
+          <h3 style={{ fontSize:"0.9rem", fontWeight:600, color:"#0f172a", display:"flex", alignItems:"center", gap:"0.5rem", margin:0 }}><IconActivity /> Recent Activities <LiveIndicator /></h3>
         </div>
         <div style={{ padding:"1rem 1.25rem" }}>
           {activitiesLoading ? <p style={{ textAlign:"center", padding:"2rem", color:"#64748b" }}>Loading...</p>
@@ -1277,7 +1438,7 @@ export default function DashboardTab({ setActiveTab }: Props) {
             <div style={{ display:"flex", flexDirection:"column", gap:"0.75rem" }}>
               {activities.slice(0, 10).map((activity, i) => (
                 <div key={activity.id || i} style={{ display:"flex", alignItems:"flex-start", gap:"0.75rem", padding:"0.5rem", background:"#f8fafc", borderRadius:"0.5rem" }}>
-                  <div style={{ width:"2rem", height:"2rem", borderRadius:"0.5rem", background:getActivityColor(activity.type), display:"flex", alignItems:"center", justifyContent:"center", fontSize:"1rem" }}>{getActivityIcon(activity.type)}</div>
+                  <div style={{ width:"2rem", height:"2rem", borderRadius:"0.5rem", background:getActivityColor(activity.type), display:"flex", alignItems:"center", justifyContent:"center" }}>{getActivityIcon(activity.type)}</div>
                   <div style={{ flex:1 }}>
                     <p style={{ fontWeight:600, fontSize:"0.875rem", color:"#0f172a", margin:0 }}>{activity.name}</p>
                     <p style={{ fontSize:"0.7rem", color:"#64748b", marginTop:"0.125rem", marginBottom:0 }}>{activity.description ?? activity.type.replace(/_/g," ")}</p>

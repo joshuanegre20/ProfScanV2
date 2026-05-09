@@ -152,7 +152,6 @@ function EditInstructorModal({ instructor, onClose, onSuccess }: { instructor: I
   const [photo, setPhoto] = useState<File | null>(null);
   const [photoPreview, setPhotoPreview] = useState<string | null>(null);
 
-  // ✅ Use protected image hook
   const existingPhoto = useProtectedImage(instructor.profile_url);
 
   const handlePhotoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -723,12 +722,15 @@ export default function InstructorsTab({ setActiveTab }: Props) {
   const [showAttendanceLogs, setShowAttendanceLogs] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
   const [editingInstructor, setEditingInstructor] = useState<Instructor | null>(null);
+  const [updatingStatus, setUpdatingStatus] = useState<number | null>(null);
 
   const fetchInstructors = () => {
     setLoading(true);
     api.get("/admin/instructors")
-      .then(res => setInstructors(res.data))
-      .catch(() => {})
+      .then(res => {
+        setInstructors(res.data);
+      })
+      .catch(err => console.error("Failed to fetch instructors:", err))
       .finally(() => setLoading(false));
   };
 
@@ -743,12 +745,16 @@ export default function InstructorsTab({ setActiveTab }: Props) {
     },
   });
 
-  const handleDelete = async (id: number) => {
-    if (!confirm("Are you sure you want to delete this instructor?")) return;
+  const handleDelete = async (id: number, name: string) => {
+    if (!confirm(`Are you sure you want to delete ${name}?`)) return;
     try {
       await api.delete(`/admin/instructors/${id}`);
       fetchInstructors();
-    } catch { alert("Failed to delete instructor."); }
+      alert("Instructor deleted successfully!");
+    } catch (err: any) {
+      console.error("Failed to delete instructor:", err);
+      alert(err.response?.data?.message || "Failed to delete instructor.");
+    }
   };
 
   const handleEdit = (instructor: Instructor) => {
@@ -758,11 +764,28 @@ export default function InstructorsTab({ setActiveTab }: Props) {
 
   const handleToggleStatus = async (instructor: Instructor) => {
     const newStatus = instructor.status === "Active" ? "Inactive" : "Active";
-    if (!confirm(`Are you sure you want to ${newStatus === "Active" ? "activate" : "deactivate"} this instructor?`)) return;
+    
+    if (!confirm(`Are you sure you want to ${newStatus === "Active" ? "activate" : "deactivate"} ${instructor.name}?`)) return;
+    
+    setUpdatingStatus(instructor.id);
     try {
+      // Try with PATCH method first
       await api.patch(`/admin/instructors/${instructor.id}/status`, { status: newStatus });
       fetchInstructors();
-    } catch { alert("Failed to update status."); }
+      alert(`Instructor ${newStatus === "Active" ? "activated" : "deactivated"} successfully!`);
+    } catch (err: any) {
+      console.error("Failed to update status:", err);
+      // Try with PUT method as fallback
+      try {
+        await api.put(`/admin/instructors/${instructor.id}`, { status: newStatus });
+        fetchInstructors();
+        alert(`Instructor ${newStatus === "Active" ? "activated" : "deactivated"} successfully!`);
+      } catch (err2: any) {
+        alert(err2.response?.data?.message || "Failed to update status.");
+      }
+    } finally {
+      setUpdatingStatus(null);
+    }
   };
 
   const filtered = instructors.filter(i => {
@@ -891,9 +914,37 @@ export default function InstructorsTab({ setActiveTab }: Props) {
                   <td style={{ padding: "0.75rem 1rem", color: "#64748b" }}>{instructor.department}</td>
                   <td style={{ padding: "0.75rem 1rem", color: "#64748b" }}>{instructor.specialization}</td>
                   <td style={{ padding: "0.75rem 1rem" }}>
-                    <span style={{ padding: "0.125rem 0.625rem", borderRadius: "9999px", fontSize: "0.75rem", fontWeight: 500, background: instructor.status === "Active" ? "#dcfce7" : "#fee2e2", color: instructor.status === "Active" ? "#15803d" : "#dc2626" }}>
-                      {instructor.status}
-                    </span>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleToggleStatus(instructor);
+                      }}
+                      disabled={updatingStatus === instructor.id}
+                      style={{
+                        padding: "0.125rem 0.625rem",
+                        borderRadius: "9999px",
+                        fontSize: "0.75rem",
+                        fontWeight: 500,
+                        background: instructor.status === "Active" ? "#dcfce7" : "#fee2e2",
+                        color: instructor.status === "Active" ? "#15803d" : "#dc2626",
+                        border: "none",
+                        cursor: updatingStatus === instructor.id ? "wait" : "pointer",
+                        opacity: updatingStatus === instructor.id ? 0.6 : 1,
+                        transition: "opacity 0.2s"
+                      }}
+                      onMouseEnter={(e) => {
+                        if (updatingStatus !== instructor.id) {
+                          e.currentTarget.style.opacity = "0.8";
+                        }
+                      }}
+                      onMouseLeave={(e) => {
+                        if (updatingStatus !== instructor.id) {
+                          e.currentTarget.style.opacity = "1";
+                        }
+                      }}
+                    >
+                      {updatingStatus === instructor.id ? "..." : instructor.status}
+                    </button>
                   </td>
                   <td style={{ padding: "0.75rem 1rem" }} onClick={e => e.stopPropagation()}>
                     <div style={{ display: "flex", gap: "0.75rem", flexWrap: "wrap" }}>
@@ -906,7 +957,7 @@ export default function InstructorsTab({ setActiveTab }: Props) {
                         Edit
                       </button>
                       <button
-                        onClick={() => handleDelete(instructor.id)}
+                        onClick={() => handleDelete(instructor.id, instructor.name)}
                         style={{ background: "none", border: "none", cursor: "pointer", fontWeight: 500, fontSize: "0.875rem", color: "#ef4444", padding: "0.25rem 0.5rem", borderRadius: "0.375rem", transition: "background 0.2s" }}
                         onMouseEnter={e => (e.currentTarget.style.background = "#fee2e2")}
                         onMouseLeave={e => (e.currentTarget.style.background = "transparent")}

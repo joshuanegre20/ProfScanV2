@@ -416,15 +416,27 @@ export default function StaffTab({
   const [editingStaff, setEditingStaff] = useState<Staff | null>(null);
 
   const loadAvatar = useCallback(async (s: Staff) => {
-    if (!s.profile_url) return;
-    try {
-      const res = await api.get(`/staff/${s.id}/photo`, {
-        responseType: "blob",
-      });
-      const url = URL.createObjectURL(res.data);
+  if (!s.profile_url) return;
+  try {
+    // Make sure token is included
+    const token = localStorage.getItem("token");
+    const response = await fetch(`${import.meta.env.VITE_API_URL ?? "http://127.0.0.1:8000"}/api/staff/${s.id}/photo`, {
+      headers: {
+        'Authorization': `Bearer ${token}`,
+      },
+    });
+    
+    if (response.ok) {
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
       setAvatars((prev) => ({ ...prev, [s.id]: url }));
-    } catch {}
-  }, []);
+    } else {
+      console.warn(`Failed to load photo for staff ${s.id}: ${response.status}`);
+    }
+  } catch (err) {
+    console.warn(`Could not load avatar for staff ${s.id}`);
+  }
+}, []);
 
   const fetchStaff = useCallback(async () => {
     try {

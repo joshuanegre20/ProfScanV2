@@ -25,6 +25,8 @@ class AdminController extends Controller
         'profile_url' => $admin->profile_url
                             ? url('/api/admin/photo')   
                             : null,
+                             'is_verified'     => (bool) $admin->is_verified,  
+            'email_verified_at' => $admin->email_verified_at,  
     ]);
 }
 
@@ -87,4 +89,28 @@ public function recentScans()
 
     return response()->json($scans);
 }
+ public function changePassword(Request $request)
+    {
+        $request->validate([
+            'current_password' => 'required|string',
+            'new_password'     => 'required|string|min:8|confirmed',
+        ]);
+
+        $user = $request->user();
+
+        if (!Hash::check($request->current_password, $user->password)) {
+            return response()->json([
+                'message' => 'Current password is incorrect.'
+            ], 422);
+        }
+
+        $user->update([
+            'password' => Hash::make($request->new_password)
+        ]);
+
+        return response()->json([
+            'message' => 'Password changed successfully!'
+        ]);
+    }
+
 }

@@ -52,9 +52,9 @@ const tabs = [
   },
   {
     key: "settings",
-    label: "Settings",
+    label: "Security Settings",
     component: SettingsTab,
-    icon: null, // settings tab is hidden from tab bar, accessed via dropdown
+    icon: null,
   },
 ];
 
@@ -63,7 +63,7 @@ const navTabs = tabs.filter(t => t.key !== "settings");
 const settingsDropdownItems = [
   {
     key: "settings",
-    label: "Settings",
+    label: "Security Settings",
     icon: (
       <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ display: "block" }}>
         <circle cx="12" cy="12" r="3" />
@@ -90,7 +90,9 @@ export default function InstructorDashboard() {
   const [showLogout, setShowLogout] = useState(false);
 
   // Track which tabs have ever been visited — only mount once, keep alive after
-  const [mountedTabs, setMountedTabs] = useState<Set<string>>(new Set(["dashboard"]));
+  const [mountedTabs, setMountedTabs] = useState<Set<string>>(
+  new Set(tabs.map((tab) => tab.key))
+);
 
   const settingsRef = useRef<HTMLDivElement>(null);
   const navigate = useNavigate();
@@ -127,10 +129,34 @@ export default function InstructorDashboard() {
     navigate("/login");
   };
 
+  useEffect(() => {
+  let objectUrl: string | null = null;
+
+  Promise.all([
+    axios
+      .get(`${import.meta.env.VITE_API_URL ?? "http://127.0.0.1:8000"}/api/logo`, { responseType: "blob" })
+      .then((res) => {
+        objectUrl = URL.createObjectURL(res.data);
+        setLogoUrl(objectUrl);
+      })
+      .catch(() => {}),
+
+    // Preload all tab chunks in background
+    import("./tabs/DashboardTab").catch(() => {}),
+    import("./tabs/SchedulesTab").catch(() => {}),
+    import("./tabs/LogsTab").catch(() => {}),
+    import("./tabs/SettingsTab").catch(() => {}),
+  ]);
+
+  return () => {
+    if (objectUrl) URL.revokeObjectURL(objectUrl);
+  };
+}, []);
+
   const navBtnStyle: React.CSSProperties = {
-    background: "#002a52",
+    background: "#eab308", // Yellow background
     border: "none",
-    color: "#fff",
+    color: "#1a1a1a", // Dark text for contrast
     width: "2.25rem",
     height: "2.25rem",
     minWidth: "2.25rem",
@@ -151,7 +177,7 @@ export default function InstructorDashboard() {
       style={{
         minHeight: "100vh",
         width: "100%",
-        background: "linear-gradient(135deg, #e0e7ff 0%, #f8fafc 50%, #ffffff 100%)",
+        background: "#003366", // Blue background
         fontFamily: "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
         position: "relative",
       }}
@@ -205,8 +231,8 @@ export default function InstructorDashboard() {
         </div>
       )}
 
-      {/* Navbar */}
-      <nav style={{ background: "#003366", color: "#fff", boxShadow: "0 4px 6px -1px rgba(0,0,0,0.1)", position: "sticky", top: 0, zIndex: 100 }}>
+      {/* Navbar - Yellow Background */}
+      <nav style={{ background: "#eab308", color: "#1a1a1a", boxShadow: "0 4px 6px -1px rgba(0,0,0,0.1)", position: "sticky", top: 0, zIndex: 100 }}>
         <div style={{ maxWidth: "80rem", margin: "0 auto", padding: "0 1.5rem", display: "flex", justifyContent: "space-between", alignItems: "center", height: "4rem" }}>
 
           {/* Left: Logo + Title */}
@@ -215,28 +241,28 @@ export default function InstructorDashboard() {
               <img src={logoUrl} alt="Logo" style={{ width: "2.25rem", height: "2.25rem", borderRadius: "50%", objectFit: "cover" }} />
             )}
             <div>
-              <p style={{ fontWeight: 700, fontSize: "0.95rem", lineHeight: 1.2, margin: 0 }}>ProfScan</p>
-              <p style={{ color: "#bfdbfe", fontSize: "0.7rem", margin: 0 }}>Instructor Portal</p>
+              <p style={{ fontWeight: 700, fontSize: "0.95rem", lineHeight: 1.2, margin: 0, color: "#1a1a1a" }}>ProfScan</p>
+              <p style={{ color: "#4a3a00", fontSize: "0.7rem", margin: 0 }}>Instructor Portal</p>
             </div>
           </div>
 
           {/* Right: Username + Settings + Logout */}
           <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
-            <span style={{ fontSize: "0.875rem", color: "#bfdbfe" }}>{userName}</span>
+            <span style={{ fontSize: "0.875rem", color: "#4a3a00" }}>{userName}</span>
 
             {/* Settings Dropdown */}
             <div ref={settingsRef} style={{ position: "relative" }}>
               <button
                 onClick={() => setSettingsOpen(p => !p)}
-                title="Settings"
+                title="Security Settings"
                 style={{
                   ...navBtnStyle,
-                  background: SETTINGS_KEYS.includes(activeTab) || settingsOpen ? "#004c99" : "#002a52",
+                  background: SETTINGS_KEYS.includes(activeTab) || settingsOpen ? "#d4a000" : "#eab308",
                 }}
-                onMouseEnter={(e) => (e.currentTarget.style.background = "#004c99")}
+                onMouseEnter={(e) => (e.currentTarget.style.background = "#d4a000")}
                 onMouseLeave={(e) => {
                   if (!SETTINGS_KEYS.includes(activeTab) && !settingsOpen)
-                    e.currentTarget.style.background = "#002a52";
+                    e.currentTarget.style.background = "#eab308";
                 }}
               >
                 <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ display: "block" }}>
@@ -288,7 +314,7 @@ export default function InstructorDashboard() {
               title="Logout"
               style={navBtnStyle}
               onMouseEnter={(e) => (e.currentTarget.style.background = "#dc2626")}
-              onMouseLeave={(e) => (e.currentTarget.style.background = "#002a52")}
+              onMouseLeave={(e) => (e.currentTarget.style.background = "#eab308")}
             >
               <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ display: "block" }}>
                 <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
@@ -309,7 +335,7 @@ export default function InstructorDashboard() {
 
       <div style={{ maxWidth: "80rem", margin: "0 auto", padding: "1.5rem", position: "relative", zIndex: 1 }}>
         {/* Tab Bar */}
-        <div style={{ borderBottom: "1px solid #e2e8f0", marginBottom: "1.5rem", background: "rgba(255,255,255,0.6)", borderRadius: "0.5rem", padding: "0 0.5rem" }}>
+        <div style={{ borderBottom: "1px solid rgba(255,255,255,0.2)", marginBottom: "1.5rem", background: "rgba(0,51,102,0.4)", borderRadius: "0.5rem", padding: "0 0.5rem" }}>
           <nav style={{ display: "flex", gap: "1.5rem", overflowX: "auto" }}>
             {navTabs.map((tab) => (
               <button
@@ -318,8 +344,8 @@ export default function InstructorDashboard() {
                 className="tab-btn"
                 style={{
                   padding: "1rem 0.25rem",
-                  borderBottom: `2px solid ${activeTab === tab.key ? "#003366" : "transparent"}`,
-                  color: activeTab === tab.key ? "#003366" : "#64748b",
+                  borderBottom: `2px solid ${activeTab === tab.key ? "#ffd700" : "transparent"}`,
+                  color: activeTab === tab.key ? "#ffd700" : "rgba(255,255,255,0.8)",
                   fontWeight: 500,
                   fontSize: "0.875rem",
                   display: "flex",

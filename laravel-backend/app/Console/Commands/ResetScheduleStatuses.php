@@ -13,7 +13,7 @@ class ResetScheduleStatuses extends Command
     public function handle()
     {
         $count = DB::table('schedule')
-            ->whereIn('status', ['Ongoing', 'Absent', 'Attended', 'Excused', 'Present'])
+            ->whereIn('status', ['Ongoing', 'Absent', 'Attended', 'Excused', 'Present', 'Late'])
             ->update([
                 'status'     => 'Upcoming',
                 'attendance' => 'Absent',

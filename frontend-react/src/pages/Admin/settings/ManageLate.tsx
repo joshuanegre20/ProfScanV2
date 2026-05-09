@@ -23,11 +23,27 @@ interface LateLeader {
   avg_minutes_late: number;
 }
 
+interface ModalState {
+  open: boolean;
+  type: "delete" | "bulkDelete";
+  title: string;
+  message: string;
+  onConfirm?: () => void;
+}
+
 export default function ManageLate() {
   const [lateRecords, setLateRecords] = useState<LateRecord[]>([]);
   const [leaders, setLeaders] = useState<LateLeader[]>([]);
   const [loading, setLoading] = useState(false);
   const [activeTab, setActiveTab] = useState<"records" | "leaderboard">("records");
+  const [selectedRecords, setSelectedRecords] = useState<Set<number>>(new Set());
+  const [deleting, setDeleting] = useState(false);
+  const [modal, setModal] = useState<ModalState>({
+    open: false,
+    type: "delete",
+    title: "",
+    message: "",
+  });
 
   useEffect(() => {
     fetchLateRecords();
@@ -72,6 +88,77 @@ export default function ManageLate() {
     setLoading(false);
   };
 
+  const handleSelectAll = () => {
+    if (selectedRecords.size === lateRecords.length) {
+      setSelectedRecords(new Set());
+    } else {
+      setSelectedRecords(new Set(lateRecords.map(r => r.id)));
+    }
+  };
+
+  const handleSelectRecord = (id: number) => {
+    const newSelected = new Set(selectedRecords);
+    if (newSelected.has(id)) {
+      newSelected.delete(id);
+    } else {
+      newSelected.add(id);
+    }
+    setSelectedRecords(newSelected);
+  };
+
+  const handleDeleteSingle = async (record: LateRecord) => {
+    setModal({
+      open: true,
+      type: "delete",
+      title: "Delete Late Record",
+      message: `Are you sure you want to delete the late record for ${record.name} (${record.subject})? This action cannot be undone.`,
+      onConfirm: async () => {
+        try {
+          setDeleting(true);
+          await api.delete(`/admin/attendance/late-records/${record.id}`);
+          await fetchLateRecords();
+          setSelectedRecords(new Set());
+          closeModal();
+        } catch (err) {
+          console.error("Failed to delete:", err);
+          alert("Failed to delete record");
+        } finally {
+          setDeleting(false);
+        }
+      }
+    });
+  };
+
+  const handleBulkDelete = async () => {
+    if (selectedRecords.size === 0) return;
+    
+    setModal({
+      open: true,
+      type: "bulkDelete",
+      title: "Delete Selected Records",
+      message: `Are you sure you want to delete ${selectedRecords.size} selected late record(s)? This action cannot be undone.`,
+      onConfirm: async () => {
+        try {
+          setDeleting(true);
+          const ids = Array.from(selectedRecords);
+          await api.post("/admin/attendance/late-records/bulk-delete", { ids });
+          await fetchLateRecords();
+          setSelectedRecords(new Set());
+          closeModal();
+        } catch (err) {
+          console.error("Failed to bulk delete:", err);
+          alert("Failed to delete records");
+        } finally {
+          setDeleting(false);
+        }
+      }
+    });
+  };
+
+  const closeModal = () => {
+    setModal(prev => ({ ...prev, open: false }));
+  };
+
   const formatTime = (timeStr: string) => {
     if (!timeStr) return "--:--";
     return timeStr.substring(0, 5);
@@ -91,8 +178,95 @@ export default function ManageLate() {
     return { bg: "#f1f5f9", color: "#64748b", label: `${index + 1}` };
   };
 
+  const formatDate = (dateStr: string) => {
+    if (!dateStr) return "";
+    const d = new Date(dateStr);
+    return d.toLocaleDateString("en-PH", { month: "short", day: "numeric" });
+  };
+
   return (
     <div style={{ maxWidth: "80rem", margin: "0 auto", padding: "1.5rem" }}>
+      {/* Modal */}
+      {modal.open && (
+        <div
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(0,0,0,0.5)",
+            backdropFilter: "blur(3px)",
+            zIndex: 100,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: "1rem",
+          }}
+          onClick={e => { if (e.target === e.currentTarget) closeModal(); }}
+        >
+          <div style={{
+            background: "#fff",
+            borderRadius: "1rem",
+            boxShadow: "0 25px 50px rgba(0,0,0,0.25)",
+            width: "100%",
+            maxWidth: "26rem",
+            overflow: "hidden",
+            animation: "modalPop 0.15s ease-out",
+          }}>
+            <div style={{
+              background: "#fee2e2",
+              padding: "1rem 1.25rem",
+              display: "flex",
+              alignItems: "center",
+              gap: "0.625rem",
+              borderBottom: "1px solid #e2e8f0",
+            }}>
+              <span style={{ fontSize: "1.1rem" }}>⚠️</span>
+              <h3 style={{ fontSize: "0.95rem", fontWeight: 700, color: "#1e293b", margin: 0 }}>{modal.title}</h3>
+            </div>
+            <div style={{ padding: "1.25rem 1.5rem" }}>
+              <p style={{ fontSize: "0.875rem", color: "#475569", lineHeight: 1.6, margin: 0 }}>{modal.message}</p>
+            </div>
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: "0.5rem", padding: "0 1.5rem 1.25rem" }}>
+              <button
+                onClick={closeModal}
+                style={{
+                  padding: "0.5rem 1.25rem",
+                  border: "1px solid #e2e8f0",
+                  borderRadius: "0.5rem",
+                  background: "none",
+                  fontSize: "0.875rem",
+                  cursor: "pointer",
+                  color: "#64748b",
+                }}
+                onMouseEnter={e => (e.currentTarget.style.background = "#f8fafc")}
+                onMouseLeave={e => (e.currentTarget.style.background = "none")}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => {
+                  modal.onConfirm?.();
+                  closeModal();
+                }}
+                style={{
+                  padding: "0.5rem 1.25rem",
+                  border: "none",
+                  borderRadius: "0.5rem",
+                  background: "#dc2626",
+                  color: "#fff",
+                  fontSize: "0.875rem",
+                  fontWeight: 600,
+                  cursor: "pointer",
+                }}
+                onMouseEnter={e => (e.currentTarget.style.background = "#b91c1c")}
+                onMouseLeave={e => (e.currentTarget.style.background = "#dc2626")}
+              >
+                Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div style={{ marginBottom: "1.5rem" }}>
         <h1 style={{ fontSize: "1.5rem", fontWeight: "bold", color: "#0f172a", marginBottom: "0.5rem" }}>
           Late Arrivals Management
@@ -109,11 +283,11 @@ export default function ManageLate() {
           style={{
             padding: "0.75rem 1.5rem",
             border: "none",
-            background: "none",
+            background: "transparent",
             cursor: "pointer",
             fontSize: "0.875rem",
             fontWeight: 500,
-            color: activeTab === "leaderboard" ? "#003366" : "#64748b",
+            color: activeTab === "leaderboard" ? "#edbb07" : "#64748b",
             borderBottom: activeTab === "leaderboard" ? "2px solid #003366" : "none",
           }}
         >
@@ -124,11 +298,11 @@ export default function ManageLate() {
           style={{
             padding: "0.75rem 1.5rem",
             border: "none",
-            background: "none",
+            background: "transparent",
             cursor: "pointer",
             fontSize: "0.875rem",
             fontWeight: 500,
-            color: activeTab === "records" ? "#003366" : "#64748b",
+            color: activeTab === "records" ? "#edbb07" : "#64748b",
             borderBottom: activeTab === "records" ? "2px solid #003366" : "none",
           }}
         >
@@ -265,27 +439,51 @@ export default function ManageLate() {
       ) : (
         /* Late Records Table */
         <div style={{ background: "#fff", borderRadius: "0.5rem", border: "1px solid #e2e8f0", overflow: "hidden" }}>
-          <div style={{ background: "#f8fafc", padding: "0.75rem 1.5rem", borderBottom: "1px solid #e2e8f0", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <div style={{ background: "#f8fafc", padding: "0.75rem 1.5rem", borderBottom: "1px solid #e2e8f0", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "0.75rem" }}>
             <h2 style={{ fontSize: "0.875rem", fontWeight: 600, color: "#1e293b" }}>
               Late Records ({lateRecords.length})
             </h2>
-            <button
-              onClick={fetchLateRecords}
-              disabled={loading}
-              style={{
-                padding: "0.375rem 0.875rem",
-                background: "#003366",
-                color: "#fff",
-                border: "none",
-                borderRadius: "0.375rem",
-                fontSize: "0.75rem",
-                cursor: "pointer",
-              }}
-              onMouseEnter={(e) => (e.currentTarget.style.background = "#004d99")}
-              onMouseLeave={(e) => (e.currentTarget.style.background = "#003366")}
-            >
-              {loading ? "Loading..." : "Refresh"}
-            </button>
+            <div style={{ display: "flex", gap: "0.5rem" }}>
+              {selectedRecords.size > 0 && (
+                <button
+                  onClick={handleBulkDelete}
+                  disabled={deleting}
+                  style={{
+                    padding: "0.375rem 0.875rem",
+                    background: "#dc2626",
+                    color: "#fff",
+                    border: "none",
+                    borderRadius: "0.375rem",
+                    fontSize: "0.75rem",
+                    cursor: "pointer",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "0.375rem",
+                  }}
+                  onMouseEnter={(e) => (e.currentTarget.style.background = "#b91c1c")}
+                  onMouseLeave={(e) => (e.currentTarget.style.background = "#dc2626")}
+                >
+                  🗑️ Delete Selected ({selectedRecords.size})
+                </button>
+              )}
+              <button
+                onClick={fetchLateRecords}
+                disabled={loading}
+                style={{
+                  padding: "0.375rem 0.875rem",
+                  background: "#003366",
+                  color: "#fff",
+                  border: "none",
+                  borderRadius: "0.375rem",
+                  fontSize: "0.75rem",
+                  cursor: "pointer",
+                }}
+                onMouseEnter={(e) => (e.currentTarget.style.background = "#004d99")}
+                onMouseLeave={(e) => (e.currentTarget.style.background = "#003366")}
+              >
+                {loading ? "Loading..." : "Refresh"}
+              </button>
+            </div>
           </div>
 
           {loading ? (
@@ -304,12 +502,22 @@ export default function ManageLate() {
               <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.875rem" }}>
                 <thead>
                   <tr style={{ background: "#f8fafc", borderBottom: "1px solid #e2e8f0" }}>
+                    <th style={{ padding: "0.75rem 1rem", textAlign: "left", fontWeight: 600, color: "#64748b", width: "2rem" }}>
+                      <input
+                        type="checkbox"
+                        checked={selectedRecords.size === lateRecords.length && lateRecords.length > 0}
+                        onChange={handleSelectAll}
+                        style={{ width: "1rem", height: "1rem", cursor: "pointer" }}
+                      />
+                    </th>
                     <th style={{ padding: "0.75rem 1rem", textAlign: "left", fontWeight: 600, color: "#64748b" }}>Instructor</th>
                     <th style={{ padding: "0.75rem 1rem", textAlign: "left", fontWeight: 600, color: "#64748b" }}>Subject</th>
+                    <th style={{ padding: "0.75rem 1rem", textAlign: "left", fontWeight: 600, color: "#64748b" }}>Date</th>
                     <th style={{ padding: "0.75rem 1rem", textAlign: "left", fontWeight: 600, color: "#64748b" }}>Schedule</th>
                     <th style={{ padding: "0.75rem 1rem", textAlign: "left", fontWeight: 600, color: "#64748b" }}>Time In</th>
                     <th style={{ padding: "0.75rem 1rem", textAlign: "left", fontWeight: 600, color: "#64748b" }}>Minutes Late</th>
                     <th style={{ padding: "0.75rem 1rem", textAlign: "left", fontWeight: 600, color: "#64748b" }}>Severity</th>
+                    <th style={{ padding: "0.75rem 1rem", textAlign: "left", fontWeight: 600, color: "#64748b" }}>Actions</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -318,10 +526,21 @@ export default function ManageLate() {
                     return (
                       <tr key={record.id} style={{ borderBottom: "1px solid #e2e8f0", background: idx % 2 === 0 ? "#fff" : "#fafafa" }}>
                         <td style={{ padding: "0.75rem 1rem" }}>
+                          <input
+                            type="checkbox"
+                            checked={selectedRecords.has(record.id)}
+                            onChange={() => handleSelectRecord(record.id)}
+                            style={{ width: "1rem", height: "1rem", cursor: "pointer" }}
+                          />
+                        </td>
+                        <td style={{ padding: "0.75rem 1rem" }}>
                           <div style={{ fontWeight: 500, color: "#1e293b" }}>{record.name}</div>
                           <div style={{ fontSize: "0.7rem", color: "#94a3b8" }}>{record.instructor_id}</div>
-                        </td>
+                         </td>
                         <td style={{ padding: "0.75rem 1rem", color: "#475569" }}>{record.subject}</td>
+                        <td style={{ padding: "0.75rem 1rem", color: "#64748b", fontSize: "0.8rem" }}>
+                          {record.scanned_at ? formatDate(record.scanned_at) : "--"}
+                        </td>
                         <td style={{ padding: "0.75rem 1rem", fontFamily: "monospace", color: "#64748b" }}>{formatTime(record.schedule_time)}</td>
                         <td style={{ padding: "0.75rem 1rem", fontFamily: "monospace", color: "#64748b" }}>{formatTime(record.scanned_at)}</td>
                         <td style={{ padding: "0.75rem 1rem" }}>
@@ -340,6 +559,29 @@ export default function ManageLate() {
                             {severity.label}
                           </span>
                         </td>
+                        <td style={{ padding: "0.75rem 1rem" }}>
+                          <button
+                            onClick={() => handleDeleteSingle(record)}
+                            style={{
+                              background: "none",
+                              border: "none",
+                              cursor: "pointer",
+                              color: "#ef4444",
+                              fontSize: "1rem",
+                              padding: "0.25rem",
+                              borderRadius: "0.25rem",
+                              display: "flex",
+                              alignItems: "center",
+                              justifyContent: "center",
+                            }}
+                            onMouseEnter={(e) => (e.currentTarget.style.background = "#fee2e2")}
+                            onMouseLeave={(e) => (e.currentTarget.style.background = "none")}
+                          >
+                            <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                            </svg>
+                          </button>
+                        </td>
                       </tr>
                     );
                   })}
@@ -353,6 +595,10 @@ export default function ManageLate() {
       <style>{`
         @keyframes spin {
           to { transform: rotate(360deg); }
+        }
+        @keyframes modalPop {
+          from { opacity: 0; transform: scale(0.95) translateY(-8px); }
+          to   { opacity: 1; transform: scale(1) translateY(0); }
         }
       `}</style>
     </div>

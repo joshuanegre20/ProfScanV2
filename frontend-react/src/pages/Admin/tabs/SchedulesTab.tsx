@@ -50,12 +50,13 @@ interface Schedule {
   time: string;
   end_time?: string;
   day: string;
-  status: "Upcoming" | "Ongoing" | "Present" | "Absent" | "Attended" | "Excused";
+  status: "Upcoming" | "Ongoing" | "Present" | "Late" | "Absent" | "Attended" | "Excused";
   attendance: "Attended" | "Unattented";
   room: string;
   device_id?: number | null;
   scanned_at?: string | null;
   block: string;
+  late_minutes: string;
 }
 
 interface ScheduleForm {
@@ -97,20 +98,20 @@ const defaultModal: ModalState = {
 };
 // ────────────────────────────────────────────────────────────────────────────
 
-const groupOrder = ["MWF", "TTH", "SAT", "SUN", "SAT-SUN"];
+const groupOrder = ["MWF", "TTH", "SAT", "SUN"];
 
 const dayColors: Record<string, { bg: string; color: string }> = {
   MWF: { bg: "#e0e7ff", color: "#4338ca" },
   TTH: { bg: "#f3e8ff", color: "#7e22ce" },
   SAT: { bg: "#ffedd5", color: "#c2410c" },
   SUN: { bg: "#fee2e2", color: "#dc2626" },
-  "SAT-SUN": { bg: "#fce7f3", color: "#be185d" },
 };
 
 const statusColors: Record<string, { bg: string; color: string }> = {
   Upcoming: { bg: "#dbeafe", color: "#1d4ed8" },
   Ongoing: { bg: "#fef9c3", color: "#a16207" },
   Present: { bg: "#dcfce7", color: "#15803d" },
+  Late: { bg: "#fed7aa", color: "#c2410c" },
   Absent: { bg: "#fee2e2", color: "#dc2626" },
   Attended: { bg: "#f3e8ff", color: "#7e22ce" },
   Excused: { bg: "#fff3cd", color: "#856404" },
@@ -120,6 +121,7 @@ const statusEmoji: Record<string, string> = {
   Upcoming: "🔵",
   Ongoing: "🟡",
   Present: "🟢",
+  Late: "⏱️",
   Absent: "🔴",
   Attended: "🟣",
   Excused: "📝",
@@ -168,7 +170,7 @@ const isTodaySchedule = (s: Schedule): boolean => {
 
 const getDisplayStatus = (s: Schedule): Schedule["status"] => {
   if (s.status === "Present" || s.status === "Attended" ||
-      s.status === "Excused" || s.status === "Absent") return s.status;
+      s.status === "Excused" || s.status === "Absent" || s.status === "Late") return s.status;
   if (!isTodaySchedule(s)) return s.status;
   if ((s.status === "Upcoming" || s.status === "Ongoing") && isTimeUp(s.end_time)) return "Absent";
   if (s.status === "Upcoming" && isTimeStarted(s.time) && !isTimeUp(s.end_time)) return "Ongoing";
@@ -187,6 +189,77 @@ const defaultFormValue: ScheduleForm = {
   room: "",
   device_id: "",
   block: ""
+};
+
+// Helper function to check for time conflicts for a specific instructor
+const checkTimeConflictForInstructor = (
+  schedules: Schedule[],
+  instructorId: string,
+  newSchedule: ScheduleForm,
+  excludeId?: number
+): { hasConflict: boolean; conflictingSchedule?: Schedule } => {
+  const startTime = newSchedule.time;
+  const endTime = newSchedule.end_time;
+  
+  // If no end time or no instructor selected, no conflict check possible
+  if (!endTime || !instructorId) return { hasConflict: false };
+  
+  const newStartMinutes = timeToMinutes(startTime);
+  const newEndMinutes = timeToMinutes(endTime);
+  
+  const conflicting = schedules.find(schedule => {
+    // Skip if it's the same schedule being edited
+    if (excludeId && schedule.id === excludeId) return false;
+    
+    // Only check same instructor
+    if (schedule.instructor_id !== instructorId) return false;
+    
+    // Only check same day
+    if (schedule.day !== newSchedule.day) return false;
+    
+    const scheduleStartMinutes = timeToMinutes(schedule.time);
+    const scheduleEndMinutes = schedule.end_time ? timeToMinutes(schedule.end_time) : scheduleStartMinutes + 60;
+    
+    // Check for overlap
+    return (newStartMinutes < scheduleEndMinutes && newEndMinutes > scheduleStartMinutes);
+  });
+  
+  return {
+    hasConflict: !!conflicting,
+    conflictingSchedule: conflicting
+  };
+};
+
+// Get all occupied time slots for a specific instructor and day
+const getOccupiedTimeSlotsForInstructor = (
+  schedules: Schedule[], 
+  instructorId: string, 
+  day: string, 
+  excludeId?: number
+): { start: string; end: string; subject: string }[] => {
+  if (!instructorId) return [];
+  
+  return schedules
+    .filter(s => s.instructor_id === instructorId && s.day === day && (!excludeId || s.id !== excludeId) && s.end_time)
+    .map(s => ({
+      start: s.time,
+      end: s.end_time || s.time,
+      subject: s.subject
+    }))
+    .sort((a, b) => timeToMinutes(a.start) - timeToMinutes(b.start));
+};
+
+const timeToMinutes = (time: string): number => {
+  const [hours, minutes] = time.split(":").map(Number);
+  return hours * 60 + minutes;
+};
+
+const formatTimeDisplay = (time: string): string => {
+  const [hours, minutes] = time.split(":");
+  const hourNum = parseInt(hours);
+  const ampm = hourNum >= 12 ? 'PM' : 'AM';
+  const hour12 = hourNum % 12 || 12;
+  return `${hour12}:${minutes} ${ampm}`;
 };
 
 // ─── AppModal Component ──────────────────────────────────────────────────────
@@ -279,6 +352,8 @@ export default function SchedulesTab() {
   const [fetchError, setFetchError] = useState<string | null>(null);
   const [now, setNow] = useState(new Date());
   const [form, setForm] = useState<ScheduleForm>(defaultFormValue);
+  const [timeConflict, setTimeConflict] = useState<{ hasConflict: boolean; message: string }>({ hasConflict: false, message: "" });
+  const [occupiedSlots, setOccupiedSlots] = useState<{ start: string; end: string; subject: string }[]>([]);
 
   // ─── Modal state ────────────────────────────────────────────────────────
   const [modal, setModal] = useState<ModalState>(defaultModal);
@@ -335,6 +410,38 @@ export default function SchedulesTab() {
       }
     });
   }, [schedules, now]);
+
+  // Check for time conflicts when form time or instructor changes
+  useEffect(() => {
+    if (form.time && form.end_time && form.day && form.instructor_id) {
+      const { hasConflict, conflictingSchedule } = checkTimeConflictForInstructor(
+        schedules,
+        form.instructor_id,
+        form,
+        editing?.id
+      );
+      
+      // Update occupied slots for the selected instructor and day
+      const slots = getOccupiedTimeSlotsForInstructor(schedules, form.instructor_id, form.day, editing?.id);
+      setOccupiedSlots(slots);
+      
+      if (hasConflict && conflictingSchedule) {
+        setTimeConflict({
+          hasConflict: true,
+          message: `Time conflict with "${conflictingSchedule.subject}" (${formatTimeDisplay(conflictingSchedule.time)} - ${conflictingSchedule.end_time ? formatTimeDisplay(conflictingSchedule.end_time) : 'ongoing'}) on ${conflictingSchedule.day} for this instructor.`
+        });
+      } else {
+        setTimeConflict({ hasConflict: false, message: "" });
+      }
+    } else if (form.day && form.instructor_id) {
+      // Just update occupied slots even if times not set
+      const slots = getOccupiedTimeSlotsForInstructor(schedules, form.instructor_id, form.day, editing?.id);
+      setOccupiedSlots(slots);
+    } else {
+      setOccupiedSlots([]);
+      setTimeConflict({ hasConflict: false, message: "" });
+    }
+  }, [form.time, form.end_time, form.day, form.instructor_id, schedules, editing]);
 
   const fetchAll = async (isRefreshing = false) => {
     if (isRefreshing) setRefreshing(true);
@@ -465,6 +572,8 @@ export default function SchedulesTab() {
     });
     setEditing(null);
     setShowModal(false);
+    setTimeConflict({ hasConflict: false, message: "" });
+    setOccupiedSlots([]);
   };
 
   const handleSubjectChange = (subjectCode: string) => {
@@ -474,6 +583,13 @@ export default function SchedulesTab() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    
+    // Check for time conflict before submitting
+    if (timeConflict.hasConflict) {
+      showAlert("Time Conflict", timeConflict.message, "warning");
+      return;
+    }
+    
     if (form.end_time && form.end_time <= form.time) {
       showAlert("Invalid Time", "End time must be after start time.", "warning");
       return;
@@ -498,8 +614,10 @@ export default function SchedulesTab() {
       setLoading(true);
       if (editing) {
         await api.put(`/admin/schedules/${editing.id}`, payload);
+        showAlert("Success", "Schedule updated successfully!", "info");
       } else {
         await api.post("/admin/schedules", payload);
+        showAlert("Success", "Schedule added successfully!", "info");
       }
       await fetchAll();
       resetForm();
@@ -537,6 +655,7 @@ export default function SchedulesTab() {
         try {
           await api.delete(`/admin/schedules/${id}`);
           fetchAll();
+          showAlert("Success", "Schedule deleted successfully!", "info");
         } catch {
           showAlert("Error", "Failed to delete schedule.", "danger");
         }
@@ -604,91 +723,38 @@ export default function SchedulesTab() {
 
   const allDeviceEntries = Object.values(schedulesByDevice).filter(entry => entry.schedules.length > 0);
 
-// Replace the getOngoingEventForRoom function with this fixed version:
-
-const getOngoingEventForRoom = (deviceName: string): Event | null => {
-  const today = new Date().toISOString().split('T')[0];
-  const now = new Date();
-  const currentTime = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`;
-  
-  console.log(`\n🔍 ========== CHECKING DEVICE: "${deviceName}" ==========`);
-  console.log(`📅 Today (ISO string): ${today}`);
-  console.log(`🕐 Current time: ${currentTime}`);
-  
-  // Log all events for debugging
-  console.log(`📋 All events in state:`);
-  events.forEach(event => {
-    console.log(`   - "${event.title}" | Location: "${event.location}" | Date: ${event.date} to ${event.date_ends} | Status: ${event.status}`);
-  });
-  
-  const found = events.find(event => {
-    console.log(`\n   Checking event: "${event.title}"`);
-    console.log(`      Location: "${event.location}" vs "${deviceName}"`);
+  const getOngoingEventForRoom = (deviceName: string): Event | null => {
+    const today = new Date().toISOString().split('T')[0];
+    const now = new Date();
+    const currentTime = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`;
     
-    // Must be ongoing status
-    if (event.status !== "Ongoing") { 
-      console.log(`      ❌ Status is ${event.status}, not Ongoing`);
-      return false;
-    }
-    
-    // Location must match device name (case-insensitive)
-    const eventLocation = event.location?.trim().toLowerCase() || "";
-    const targetDevice = deviceName.trim().toLowerCase();
-    const locationMatches = eventLocation === targetDevice;
-    
-    if (!locationMatches) {
-      console.log(`      ❌ Location mismatch: "${event.location}" !== "${deviceName}"`);
-      return false;
-    }
-    console.log(`      ✅ Location matches`);
-    
-    // Today must be within the event date range
-    console.log(`      Date check: ${today} between ${event.date} and ${event.date_ends}?`);
-    if (today < event.date || today > event.date_ends) {
-      console.log(`      ❌ Date out of range`);
-      return false;
-    }
-    console.log(`      ✅ Date in range`);
-    
-    // Normalize times
-    const rawStart = (event.start || "").substring(0, 5);
-    const rawEnd   = (event.ends  || "").substring(0, 5);
-    
-    const isAllDay = (!rawStart || rawStart === "00:00") && (!rawEnd || rawEnd === "00:00");
-    
-    if (isAllDay) {
-      console.log(`      ✅ All-day event - ACTIVE!`);
+    return events.find(event => {
+      if (event.status !== "Ongoing") return false;
+      
+      const eventLocation = event.location?.trim().toLowerCase() || "";
+      const targetDevice = deviceName.trim().toLowerCase();
+      if (eventLocation !== targetDevice) return false;
+      
+      if (today < event.date || today > event.date_ends) return false;
+      
+      const rawStart = (event.start || "").substring(0, 5);
+      const rawEnd   = (event.ends  || "").substring(0, 5);
+      
+      const isAllDay = (!rawStart || rawStart === "00:00") && (!rawEnd || rawEnd === "00:00");
+      if (isAllDay) return true;
+      
+      if (rawEnd && currentTime > rawEnd) return false;
+      if (rawStart && currentTime < rawStart) return false;
+      
       return true;
-    }
-    
-    // Check time range
-    if (rawEnd && currentTime > rawEnd) {
-      console.log(`      ❌ Time out of range: ${currentTime} > ${rawEnd}`);
-      return false;
-    }
-    if (rawStart && currentTime < rawStart) {
-      console.log(`      ❌ Time before start: ${currentTime} < ${rawStart}`);
-      return false;
-    }
-    
-    console.log(`      ✅ Time in range - ACTIVE!`);
-    return true;
-  });
-  
-  console.log(`\n📢 RESULT for ${deviceName}: ${found ? `FOUND "${found.title}"` : "NOT FOUND"}`);
-  return found || null;
-};
+    }) || null;
+  };
 
   const DeviceCard = ({ device, deviceSchedules }: { device: Device; deviceSchedules: Schedule[] }) => {
     const [excusing, setExcusing] = useState(false);
     
-    // Debug log for device rendering
-    console.log(`🏷️ Rendering DeviceCard for: "${device.name}"`);
-    
     const ongoingEvent = getOngoingEventForRoom(device.name);
     const hasOngoingEvent = !!ongoingEvent;
-    
-    console.log(`📌 Device "${device.name}" has ongoing event: ${hasOngoingEvent}`, ongoingEvent);
 
     const handleExcuseAll = async () => {
       if (!ongoingEvent) return;
@@ -722,9 +788,10 @@ const getOngoingEventForRoom = (deviceName: string): Event | null => {
     const present = todaySchedules.filter(s => getDisplayStatus(s) === "Present");
     const attended = todaySchedules.filter(s => getDisplayStatus(s) === "Attended");
     const absent = todaySchedules.filter(s => getDisplayStatus(s) === "Absent");
+    const late = todaySchedules.filter(s => getDisplayStatus(s) === "Late");
 
     const todayAttendance = deviceSchedules
-      .filter(s => s.day === todayGroup && (s.status === "Attended" || s.status === "Present" || s.status === "Excused"))
+      .filter(s => s.day === todayGroup && (s.status === "Attended" || s.status === "Present" || s.status === "Excused" || s.status === "Late"))
       .sort((a, b) => {
         const dateA = a.scanned_at ? new Date(a.scanned_at).getTime() : 0;
         const dateB = b.scanned_at ? new Date(b.scanned_at).getTime() : 0;
@@ -755,12 +822,13 @@ const getOngoingEventForRoom = (deviceName: string): Event | null => {
           </div>
         </div>
 
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr 1fr", borderBottom: "1px solid #e2e8f0" }}>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr 1fr 1fr", borderBottom: "1px solid #e2e8f0" }}>
           {[
             { label: "Total", value: deviceSchedules.length, color: "#003366" },
             { label: "Today", value: todaySchedules.length, color: "#f59e0b" },
             { label: "Present", value: present.length, color: "#22c55e" },
             { label: "Attended", value: attended.length, color: "#a855f7" },
+            { label: "Late", value: late.length, color: "#f59e0b" },
             { label: "Absent", value: absent.length, color: "#ef4444" },
           ].map(stat => (
             <div key={stat.label} style={{ padding: "0.875rem", textAlign: "center", borderRight: "1px solid #e2e8f0" }}>
@@ -770,7 +838,6 @@ const getOngoingEventForRoom = (deviceName: string): Event | null => {
           ))}
         </div>
 
-        {/* Only show Excuse button if there's an ongoing event for THIS SPECIFIC device/room */}
         {hasOngoingEvent && (
           <div style={{ background: "#fff3cd", padding: "0.625rem 1.25rem", display: "flex", alignItems: "center", justifyContent: "space-between", borderBottom: "1px solid #ffeeba" }}>
             <div style={{ display: "flex", alignItems: "center", gap: "0.4rem" }}>
@@ -801,12 +868,13 @@ const getOngoingEventForRoom = (deviceName: string): Event | null => {
                 return (
                   <div key={s.id} style={{
                     padding: "0.75rem", borderRadius: "0.5rem",
-                    background: displayStatus === "Present" ? "#f0fdf4" : displayStatus === "Attended" ? "#f3e8ff" : displayStatus === "Absent" ? "#fef2f2" : displayStatus === "Excused" ? "#fff3cd" : displayStatus === "Ongoing" ? "#fefce8" : "#f8fafc",
+                    background: displayStatus === "Present" ? "#f0fdf4" : displayStatus === "Attended" ? "#f3e8ff" : displayStatus === "Absent" ? "#fef2f2" : displayStatus === "Excused" ? "#fff3cd" : displayStatus === "Late" ? "#fffbeb" : displayStatus === "Ongoing" ? "#fefce8" : "#f8fafc",
                     border: `1px solid ${
                       displayStatus === "Present" ? "#bbf7d0" :
                       displayStatus === "Attended" ? "#d8b4fe" :
                       displayStatus === "Absent" ? "#fecaca" :
                       displayStatus === "Excused" ? "#ffeeba" :
+                      displayStatus === "Late" ? "#fed7aa" :
                       displayStatus === "Ongoing" ? "#fde68a" : "#e2e8f0"
                     }`,
                   }}>
@@ -825,22 +893,27 @@ const getOngoingEventForRoom = (deviceName: string): Event | null => {
                         </div>
                         {s.scanned_at && (
                           <div style={{ display: "flex", alignItems: "center", gap: "0.4rem", marginTop: "0.25rem" }}>
-                            <svg width="12" height="12" fill="none" stroke="#22c55e" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
-                            <span style={{ fontSize: "0.65rem", color: "#22c55e" }}>Scanned: {new Date(s.scanned_at).toLocaleTimeString()}</span>
+                            <svg width="12" height="12" fill="none" stroke={s.status === "Late" ? "#c2410c" : "#22c55e"} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                            <span style={{ fontSize: "0.65rem", color: s.status === "Late" ? "#c2410c" : "#22c55e" }}>
+                              {s.status === "Late" ? `Late by ${s.late_minutes || "?"} min • ` : ""}Scanned: {new Date(s.scanned_at).toLocaleTimeString()}
+                            </span>
                           </div>
                         )}
                       </div>
                       <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: "0.25rem" }}>
-                        {(displayStatus === "Present" || displayStatus === "Attended" || displayStatus === "Absent" || displayStatus === "Excused") && (
+                        {(displayStatus === "Present" || displayStatus === "Attended" || displayStatus === "Absent" || displayStatus === "Excused" || displayStatus === "Late") && (
                           <span style={{
                             fontSize: "0.65rem", fontWeight: 600, padding: "0.125rem 0.5rem", borderRadius: "9999px",
                             background: (displayStatus === "Present" || displayStatus === "Attended") ? "#dcfce7" :
-                                        displayStatus === "Excused" ? "#fff3cd" : "#fee2e2",
+                                        displayStatus === "Excused" ? "#fff3cd" :
+                                        displayStatus === "Late" ? "#fed7aa" : "#fee2e2",
                             color: (displayStatus === "Present" || displayStatus === "Attended") ? "#15803d" :
-                                   displayStatus === "Excused" ? "#856404" : "#dc2626",
+                                   displayStatus === "Excused" ? "#856404" :
+                                   displayStatus === "Late" ? "#c2410c" : "#dc2626",
                           }}>
                             {displayStatus === "Present" || displayStatus === "Attended" ? "✅ Present" :
-                             displayStatus === "Excused" ? "📝 Excused" : "❌ Absent"}
+                             displayStatus === "Excused" ? "📝 Excused" :
+                             displayStatus === "Late" ? "⏱️ Late" : "❌ Absent"}
                           </span>
                         )}
                         <span style={{
@@ -876,7 +949,8 @@ const getOngoingEventForRoom = (deviceName: string): Event | null => {
                     <div style={{
                       width: "8px", height: "8px", borderRadius: "50%",
                       background: s.status === "Attended" ? "#a855f7" :
-                                  s.status === "Excused" ? "#856404" : "#22c55e",
+                                  s.status === "Excused" ? "#856404" :
+                                  s.status === "Late" ? "#f59e0b" : "#22c55e",
                     }} />
                     <div>
                       <p style={{ fontWeight: 500, fontSize: "0.75rem", color: "#1e293b" }}>{s.name}</p>
@@ -884,11 +958,14 @@ const getOngoingEventForRoom = (deviceName: string): Event | null => {
                       {s.block && (
                         <p style={{ fontSize: "0.6rem", color: "#003366", marginTop: "0.1rem" }}>Block: {s.block}</p>
                       )}
+                      {s.status === "Late" && s.late_minutes && (
+                        <p style={{ fontSize: "0.6rem", color: "#c2410c", marginTop: "0.1rem" }}>Late by {s.late_minutes} min</p>
+                      )}
                     </div>
                   </div>
                   <div style={{ textAlign: "right" }}>
-                    <span style={{ fontSize: "0.65rem", fontWeight: 600, color: s.status === "Attended" ? "#a855f7" : s.status === "Excused" ? "#856404" : "#22c55e" }}>
-                      {s.status}
+                    <span style={{ fontSize: "0.65rem", fontWeight: 600, color: s.status === "Attended" ? "#a855f7" : s.status === "Excused" ? "#856404" : s.status === "Late" ? "#f59e0b" : "#22c55e" }}>
+                      {s.status === "Late" ? "⏱️ Late" : s.status}
                     </span>
                     {s.scanned_at && (
                       <p style={{ fontSize: "0.6rem", color: "#94a3b8", marginTop: "0.1rem" }}>
@@ -910,33 +987,6 @@ const getOngoingEventForRoom = (deviceName: string): Event | null => {
 
       {/* ─── App-wide Modal ─────────────────────────────────────────────── */}
       <AppModal modal={modal} onClose={closeModal} />
-
-      {/* Debug Info Panel */}
-      <div style={{ background: "#eef2ff", padding: "0.75rem 1rem", borderRadius: "0.5rem", fontSize: "0.75rem", color: "#1e293b", border: "1px solid #e2e8f0", marginBottom: "0.5rem" }}>
-        <strong>📅 Today's Date:</strong> {new Date().toLocaleDateString("en-PH", { weekday: "long", month: "long", day: "numeric" })}
-        <br />
-        <strong>🏷️ Today's Group:</strong> {todayGroup}
-        <br />
-        <strong>📊 Total Schedules:</strong> {schedules.length}
-        <br />
-        <strong>📋 Total Events:</strong> {events.length}
-        <br />
-        <strong>📱 Paired Devices:</strong> {pairedDevices.map(d => d.name).join(", ")}
-      </div>
-
-      {/* Ongoing Events Debug Panel */}
-      <div style={{ background: "#fef3c7", padding: "0.75rem 1rem", borderRadius: "0.5rem", fontSize: "0.75rem", color: "#92400e", border: "1px solid #fde68a", marginBottom: "0.5rem" }}>
-        <strong>🔍 Ongoing Events:</strong><br />
-        {events.filter(e => e.status === "Ongoing").length > 0 ? (
-          events.filter(e => e.status === "Ongoing").map(e => (
-            <div key={e.id}>
-              📅 <strong>{e.title}</strong> at <strong>"{e.location}"</strong> from {e.start} to {e.ends} ({e.date} to {e.date_ends})
-            </div>
-          ))
-        ) : (
-          <div>⚠️ No ongoing events at this moment</div>
-        )}
-      </div>
 
       {/* Header */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: "1rem" }}>
@@ -1010,7 +1060,7 @@ const getOngoingEventForRoom = (deviceName: string): Event | null => {
                 </select>
                 <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)} style={{ ...inputStyle, width: "auto" }}>
                   <option value="">All Status</option>
-                  {["Upcoming", "Ongoing", "Present", "Absent", "Attended", "Excused"].map(s => <option key={s}>{s}</option>)}
+                  {["Upcoming", "Ongoing", "Present", "Late", "Absent", "Attended", "Excused"].map(s => <option key={s}>{s}</option>)}
                 </select>
                 <select value={departmentFilter} onChange={e => setDepartmentFilter(e.target.value)} style={{ ...inputStyle, width: "auto" }}>
                   <option value="">All Departments</option>
@@ -1066,13 +1116,19 @@ const getOngoingEventForRoom = (deviceName: string): Event | null => {
                                 <span style={{ padding: "0.125rem 0.625rem", borderRadius: "9999px", fontSize: "0.75rem", fontWeight: 600, background: dayColors[s.day]?.bg, color: dayColors[s.day]?.color }}>{s.day}</span>
                               </td>
                               <td style={{ padding: "0.875rem 1.25rem" }}>
-                                {(displayStatus === "Present" || displayStatus === "Attended" || displayStatus === "Absent" || displayStatus === "Excused") && (
+                                {(displayStatus === "Present" || displayStatus === "Attended" || displayStatus === "Absent" || displayStatus === "Excused" || displayStatus === "Late") && (
                                   <span style={{
                                     padding: "0.125rem 0.5rem", borderRadius: "9999px", fontSize: "0.75rem", fontWeight: 500,
-                                    background: (displayStatus === "Present" || displayStatus === "Attended") ? "#dcfce7" : displayStatus === "Excused" ? "#fff3cd" : "#fee2e2",
-                                    color: (displayStatus === "Present" || displayStatus === "Attended") ? "#15803d" : displayStatus === "Excused" ? "#856404" : "#dc2626",
+                                    background: (displayStatus === "Present" || displayStatus === "Attended") ? "#dcfce7" :
+                                                displayStatus === "Excused" ? "#fff3cd" :
+                                                displayStatus === "Late" ? "#fed7aa" : "#fee2e2",
+                                    color: (displayStatus === "Present" || displayStatus === "Attended") ? "#15803d" :
+                                           displayStatus === "Excused" ? "#856404" :
+                                           displayStatus === "Late" ? "#c2410c" : "#dc2626",
                                   }}>
-                                    {displayStatus === "Present" || displayStatus === "Attended" ? "✅ Attended" : displayStatus === "Excused" ? "📝 Excused" : "❌ Unattended"}
+                                    {displayStatus === "Present" || displayStatus === "Attended" ? "✅ Attended" :
+                                     displayStatus === "Excused" ? "📝 Excused" :
+                                     displayStatus === "Late" ? "⏱️ Late" : "❌ Unattended"}
                                   </span>
                                 )}
                               </td>
@@ -1112,156 +1168,482 @@ const getOngoingEventForRoom = (deviceName: string): Event | null => {
         </>
       )}
 
+   
+
       {/* Schedule Form Modal */}
       {showModal && (
-        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.4)", backdropFilter: "blur(4px)", zIndex: 50, display: "flex", alignItems: "center", justifyContent: "center", padding: "1rem" }}>
-          <div style={{ background: "#fff", borderRadius: "1rem", boxShadow: "0 25px 50px rgba(0,0,0,0.2)", width: "100%", maxWidth: "32rem", maxHeight: "90vh", overflowY: "auto" }}>
-            <div style={{ padding: "1.5rem" }}>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "1.25rem" }}>
-                <div>
-                  <h2 style={{ fontSize: "1.1rem", fontWeight: 700, color: "#1e293b" }}>{editing ? "Edit Schedule" : "Add Schedule"}</h2>
-                  <p style={{ fontSize: "0.75rem", color: "#64748b", marginTop: "0.125rem" }}>Fill in the instructor schedule details</p>
-                </div>
-                <button onClick={resetForm} style={{ background: "none", border: "none", cursor: "pointer", color: "#94a3b8" }}>
-                  <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
-                </button>
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", backdropFilter: "blur(4px)", zIndex: 50, display: "flex", alignItems: "center", justifyContent: "center", padding: "1rem" }}>
+          <div style={{ 
+            background: "#fff", 
+            borderRadius: "1.25rem", 
+            boxShadow: "0 25px 50px -12px rgba(0,0,0,0.25)", 
+            width: "100%", 
+            maxWidth: "56rem", 
+            maxHeight: "85vh", 
+            overflow: "hidden",
+            display: "flex",
+            flexDirection: "column"
+          }}>
+            {/* Modal Header */}
+            <div style={{ 
+              padding: "1.25rem 1.5rem", 
+              borderBottom: "1px solid #e9eef3", 
+              background: "#fff",
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              flexShrink: 0
+            }}>
+              <div>
+                <h2 style={{ fontSize: "1.125rem", fontWeight: 700, color: "#1e293b", margin: 0 }}>
+                  {editing ? "Edit Schedule" : "Add New Schedule"}
+                </h2>
+                <p style={{ fontSize: "0.75rem", color: "#64748b", marginTop: "0.25rem", marginBottom: 0 }}>
+                  Fill in the details to {editing ? "update" : "create"} a schedule
+                </p>
               </div>
-              <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
-                <div>
-                  <label style={labelStyle}>Assign to Device *</label>
-                  {pairedDevices.length === 0 ? (
-                    <p style={{ fontSize: "0.8rem", color: "#ef4444" }}>No paired devices available. Please add a device first.</p>
-                  ) : (
-                    <select
-                      value={form.device_id}
-                      onChange={e => {
-                        const deviceId = e.target.value;
-                        const selectedDevice = pairedDevices.find(d => d.id.toString() === deviceId);
-                        setForm({
-                          ...form,
-                          device_id: deviceId,
-                          room: selectedDevice?.name ?? ""
-                        });
-                      }}
-                      style={inputStyle}
-                      required
-                    >
-                      <option value="">Select a device</option>
-                      {pairedDevices.map(device => (
-                        <option key={device.id} value={device.id.toString()}>
-                          {device.name} {device.status === "online" ? "🟢 Online" : "⚪ Offline"}
-                        </option>
-                      ))}
-                    </select>
-                  )}
-                </div>
-                <div>
-                  <label style={labelStyle}>Instructor *</label>
-                  <select value={form.instructor_id} required onChange={e => {
-                    const sel = instructors.find(i => i.instructor_id === e.target.value);
-                    setForm({ ...form, instructor_id: e.target.value, name: sel?.name ?? "" });
-                  }} style={inputStyle}>
-                    <option value="">Select Instructor</option>
-                    {instructors.map(i => <option key={i.id} value={i.instructor_id}>{i.name}</option>)}
-                  </select>
-                </div>
-                {form.instructor_id && (
-                  <div>
-                    <label style={labelStyle}>Instructor ID</label>
-                    <input type="text" value={form.instructor_id} readOnly style={{ ...inputStyle, background: "#f8fafc", color: "#003366", fontFamily: "monospace", fontWeight: 600, cursor: "default" }} />
-                  </div>
-                )}
-                <div>
-                  <label style={labelStyle}>Subject *</label>
-                  <select value={form.subject_code} required onChange={e => handleSubjectChange(e.target.value)} style={inputStyle}>
-                    <option value="">Select Subject</option>
-                    {Object.entries(subjectsByDepartment).map(([dept, deptSubjects]) => (
-                      <optgroup key={dept} label={`${dept} Department`}>
-                        {deptSubjects.map(subject => (
-                          <option key={subject.id} value={subject.subject_code}>{subject.subject_code} — {subject.subject}</option>
-                        ))}
-                      </optgroup>
-                    ))}
-                  </select>
-                </div>
-                {form.subject_code && (
-                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1rem" }}>
-                    <div><label style={labelStyle}>Subject Name</label><input type="text" value={form.subject} readOnly style={{ ...inputStyle, background: "#f8fafc", color: "#1e293b", cursor: "default" }} /></div>
-                    <div><label style={labelStyle}>Subject Code</label><input type="text" value={form.subject_code} readOnly style={{ ...inputStyle, background: "#f8fafc", color: "#003366", fontFamily: "monospace", fontWeight: 600, cursor: "default" }} /></div>
-                  </div>
-                )}
-                <div>
-                  <label style={labelStyle}>Block</label>
-                  <input 
-                    type="text" 
-                    placeholder="Block number (01-99)"
-                    maxLength={2}
-                    pattern="[0-9]{2}"
-                    value={form.block}
-                    onChange={(e) => {
-                      let value = e.target.value;
-                      value = value.replace(/[^0-9]/g, '');
-                      if (value.length > 2) {
-                        value = value.slice(0, 2);
-                      }
-                      setForm({ ...form, block: value });
-                    }}
-                    style={inputStyle}
-                  />
-                  <p style={{
-                    fontSize: "0.7rem",
-                    color: "#64748b",
-                    marginTop: "0.25rem",
-                    marginBottom: 0,
+              <button 
+                onClick={resetForm} 
+                style={{ 
+                  background: "none", 
+                  border: "none", 
+                  cursor: "pointer", 
+                  color: "#94a3b8",
+                  padding: "0.5rem",
+                  borderRadius: "0.5rem",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  transition: "all 0.2s"
+                }}
+                onMouseEnter={(e) => { e.currentTarget.style.background = "#f1f5f9"; e.currentTarget.style.color = "#475569"; }}
+                onMouseLeave={(e) => { e.currentTarget.style.background = "none"; e.currentTarget.style.color = "#94a3b8"; }}
+              >
+                <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+
+            {/* Modal Body - Scrollable */}
+            <div style={{ padding: "1.5rem", overflowY: "auto", flex: 1 }}>
+              {/* Instructor Selection Banner */}
+              {form.instructor_id && (
+                <div style={{ 
+                  marginBottom: "1.25rem", 
+                  padding: "0.75rem 1rem", 
+                  background: "linear-gradient(135deg, #eef2ff, #f8fafc)", 
+                  borderRadius: "0.75rem", 
+                  border: "1px solid #e0e7ff",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "0.75rem"
+                }}>
+                  <div style={{
+                    width: "32px",
+                    height: "32px",
+                    background: "#003366",
+                    borderRadius: "50%",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    flexShrink: 0
                   }}>
-                    Enter 2-digit block number (e.g., 01, 02, 15)
-                  </p>
-                </div>
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "1rem" }}>
-                  <div><label style={labelStyle}>Start Time *</label><input type="time" value={form.time} onChange={e => setForm({ ...form, time: e.target.value })} style={inputStyle} required /></div>
-                  <div><label style={labelStyle}>End Time</label><input type="time" value={form.end_time} onChange={e => setForm({ ...form, end_time: e.target.value })} style={inputStyle} /></div>
-                  <div><label style={labelStyle}>Day *</label>
-                    <select value={form.day} onChange={e => setForm({ ...form, day: e.target.value })} style={inputStyle}>
-                      <option value="MWF">MWF</option>
-                      <option value="TTH">TTH</option>
-                      <option value="SAT">SAT</option>
-                      <option value="SUN">SUN</option>
-                    </select>
+                    <svg width="16" height="16" fill="none" stroke="#fff" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                    </svg>
+                  </div>
+                  <div>
+                    <p style={{ fontSize: "0.7rem", color: "#64748b", margin: 0 }}>Selected Instructor</p>
+                    <p style={{ fontSize: "0.875rem", fontWeight: 600, color: "#1e293b", margin: 0 }}>
+                      {instructors.find(i => i.instructor_id === form.instructor_id)?.name || form.instructor_id}
+                    </p>
                   </div>
                 </div>
-                <div>
-                  <label style={labelStyle}>Initial Status</label>
-                  <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
-                    {(["Upcoming", "Ongoing", "Present", "Absent", "Attended", "Excused"] as const).map(s => (
-                      <label key={s} style={{ flex: 1, minWidth: "80px", display: "flex", alignItems: "center", justifyContent: "center", gap: "0.3rem", padding: "0.5rem", borderRadius: "0.5rem", cursor: "pointer", fontSize: "0.75rem", fontWeight: 500, border: `2px solid ${form.status === s ? statusColors[s]?.color : "#e2e8f0"}`, background: form.status === s ? statusColors[s]?.bg : "transparent", color: form.status === s ? statusColors[s]?.color : "#64748b" }}>
-                        <input type="radio" name="status" value={s} checked={form.status === s} onChange={() => setForm({ ...form, status: s })} style={{ display: "none" }} />
-                        {statusEmoji[s]} {s}
-                      </label>
-                    ))}
+              )}
+
+              {/* Time Conflict Warning */}
+              {timeConflict.hasConflict && (
+                <div style={{ 
+                  marginBottom: "1.25rem", 
+                  padding: "0.75rem 1rem", 
+                  background: "#fef2f2", 
+                  borderRadius: "0.75rem", 
+                  border: "1px solid #fecaca",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "0.75rem"
+                }}>
+                  <svg width="18" height="18" fill="none" stroke="#dc2626" viewBox="0 0 24 24" style={{ flexShrink: 0 }}>
+                    <circle cx="12" cy="12" r="10" strokeWidth={2} />
+                    <line x1="12" y1="8" x2="12" y2="12" />
+                    <line x1="12" y1="16" x2="12.01" y2="16" />
+                  </svg>
+                  <span style={{ fontSize: "0.813rem", color: "#dc2626", lineHeight: 1.4 }}>{timeConflict.message}</span>
+                </div>
+              )}
+
+              {/* Two Column Layout */}
+              <div style={{ display: "flex", gap: "1.5rem", flexWrap: "wrap" }}>
+                {/* Left Column - Form */}
+                <div style={{ flex: 2, minWidth: "280px" }}>
+                  <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: "1.25rem" }}>
+                    {/* Device */}
+                    <div>
+                      <label style={labelStyle}>Device *</label>
+                      {pairedDevices.length === 0 ? (
+                        <div style={{ padding: "0.75rem", background: "#fef2f2", borderRadius: "0.5rem", border: "1px solid #fecaca" }}>
+                          <p style={{ fontSize: "0.813rem", color: "#dc2626", margin: 0 }}>⚠️ No paired devices available. Please add a device first.</p>
+                        </div>
+                      ) : (
+                        <select
+                          value={form.device_id}
+                          onChange={e => {
+                            const deviceId = e.target.value;
+                            const selectedDevice = pairedDevices.find(d => d.id.toString() === deviceId);
+                            setForm({
+                              ...form,
+                              device_id: deviceId,
+                              room: selectedDevice?.name ?? ""
+                            });
+                          }}
+                          style={inputStyle}
+                          required
+                        >
+                          <option value="">Select a device</option>
+                          {pairedDevices.map(device => (
+                            <option key={device.id} value={device.id.toString()}>
+                              {device.name} {device.status === "online" ? "🟢 Online" : "⚪ Offline"}
+                            </option>
+                          ))}
+                        </select>
+                      )}
+                    </div>
+
+                    {/* Instructor */}
+                    <div>
+                      <label style={labelStyle}>Instructor *</label>
+                      <select 
+                        value={form.instructor_id} 
+                        required 
+                        onChange={e => {
+                          const sel = instructors.find(i => i.instructor_id === e.target.value);
+                          setForm({ ...form, instructor_id: e.target.value, name: sel?.name ?? "" });
+                          setOccupiedSlots([]);
+                          setTimeConflict({ hasConflict: false, message: "" });
+                        }} 
+                        style={inputStyle}
+                      >
+                        <option value="">Select Instructor</option>
+                        {instructors.map(i => <option key={i.id} value={i.instructor_id}>{i.name}</option>)}
+                      </select>
+                    </div>
+
+                    {/* Subject */}
+                    <div>
+                      <label style={labelStyle}>Subject *</label>
+                      <select value={form.subject_code} required onChange={e => handleSubjectChange(e.target.value)} style={inputStyle}>
+                        <option value="">Select Subject</option>
+                        {Object.entries(subjectsByDepartment).map(([dept, deptSubjects]) => (
+                          <optgroup key={dept} label={`${dept} Department`}>
+                            {deptSubjects.map(subject => (
+                              <option key={subject.id} value={subject.subject_code}>{subject.subject_code} — {subject.subject}</option>
+                            ))}
+                          </optgroup>
+                        ))}
+                      </select>
+                    </div>
+
+                    {/* Block */}
+                    <div>
+                      <label style={labelStyle}>Block</label>
+                      <input 
+                        type="text" 
+                        placeholder="e.g., 01, 02, 15"
+                        maxLength={2}
+                        value={form.block}
+                        onChange={(e) => {
+                          let value = e.target.value;
+                          value = value.replace(/[^0-9]/g, '');
+                          if (value.length > 2) value = value.slice(0, 2);
+                          setForm({ ...form, block: value });
+                        }}
+                        style={inputStyle}
+                      />
+                      <p style={{ fontSize: "0.65rem", color: "#94a3b8", marginTop: "0.25rem", marginBottom: 0 }}>2-digit block number (optional)</p>
+                    </div>
+
+                    {/* Time & Day Row */}
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "1rem" }}>
+                      <div>
+                        <label style={labelStyle}>Start Time *</label>
+                        <input type="time" value={form.time} onChange={e => setForm({ ...form, time: e.target.value })} style={inputStyle} required />
+                      </div>
+                      <div>
+                        <label style={labelStyle}>End Time</label>
+                        <input type="time" value={form.end_time} onChange={e => setForm({ ...form, end_time: e.target.value })} style={inputStyle} />
+                      </div>
+                      <div>
+                        <label style={labelStyle}>Day *</label>
+                        <select value={form.day} onChange={e => setForm({ ...form, day: e.target.value })} style={inputStyle}>
+                          <option value="MWF">Monday, Wednesday, Friday</option>
+                          <option value="TTH">Tuesday, Thursday</option>
+                          <option value="SAT">Saturday</option>
+                          <option value="SUN">Sunday</option>
+                        </select>
+                      </div>
+                    </div>
+
+                    {/* Status */}
+                    <div>
+                      <label style={labelStyle}>Initial Status</label>
+                      <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
+                        {(["Upcoming", "Ongoing", "Present", "Late", "Absent", "Attended", "Excused"] as const).map(s => (
+                          <label 
+                            key={s} 
+                            style={{ 
+                              flex: 1, 
+                              minWidth: "80px", 
+                              display: "flex", 
+                              alignItems: "center", 
+                              justifyContent: "center", 
+                              gap: "0.3rem", 
+                              padding: "0.5rem 0.75rem", 
+                              borderRadius: "0.5rem", 
+                              cursor: "pointer", 
+                              fontSize: "0.75rem", 
+                              fontWeight: 500, 
+                              background: form.status === s ? statusColors[s]?.bg : "#f8fafc",
+                              border: `1px solid ${form.status === s ? statusColors[s]?.color : "#e2e8f0"}`,
+                              color: form.status === s ? statusColors[s]?.color : "#64748b",
+                              transition: "all 0.2s"
+                            }}
+                          >
+                            <input type="radio" name="status" value={s} checked={form.status === s} onChange={() => setForm({ ...form, status: s })} style={{ display: "none" }} />
+                            {statusEmoji[s]} {s}
+                          </label>
+                        ))}
+                      </div>
+                      <p style={{ fontSize: "0.65rem", color: "#94a3b8", marginTop: "0.5rem", marginBottom: 0 }}>Status will be automatically updated based on current time</p>
+                    </div>
+
+                    {/* Form Actions */}
+                    <div style={{ display: "flex", justifyContent: "flex-end", gap: "0.75rem", paddingTop: "0.5rem", borderTop: "1px solid #e9eef3", marginTop: "0.5rem" }}>
+                      <button 
+                        type="button" 
+                        onClick={resetForm} 
+                        style={{ 
+                          padding: "0.625rem 1.25rem", 
+                          border: "1px solid #e2e8f0", 
+                          borderRadius: "0.5rem", 
+                          background: "#fff", 
+                          fontSize: "0.875rem", 
+                          fontWeight: 500, 
+                          cursor: "pointer", 
+                          color: "#64748b",
+                          transition: "all 0.2s"
+                        }}
+                        onMouseEnter={e => { e.currentTarget.style.background = "#f8fafc"; e.currentTarget.style.borderColor = "#cbd5e1"; }}
+                        onMouseLeave={e => { e.currentTarget.style.background = "#fff"; e.currentTarget.style.borderColor = "#e2e8f0"; }}
+                      >
+                        Cancel
+                      </button>
+                      <button 
+                        type="submit" 
+                        disabled={loading || pairedDevices.length === 0 || timeConflict.hasConflict} 
+                        style={{ 
+                          padding: "0.625rem 1.5rem", 
+                          background: (loading || pairedDevices.length === 0 || timeConflict.hasConflict) ? "#cbd5e1" : "#003366", 
+                          color: "#fff", 
+                          border: "none", 
+                          borderRadius: "0.5rem", 
+                          fontSize: "0.875rem", 
+                          fontWeight: 600, 
+                          cursor: (loading || pairedDevices.length === 0 || timeConflict.hasConflict) ? "not-allowed" : "pointer", 
+                          display: "flex", 
+                          alignItems: "center", 
+                          gap: "0.5rem",
+                          transition: "background 0.2s"
+                        }}
+                        onMouseEnter={e => { if (!loading && pairedDevices.length > 0 && !timeConflict.hasConflict) e.currentTarget.style.background = "#004c99"; }}
+                        onMouseLeave={e => { if (!loading && pairedDevices.length > 0 && !timeConflict.hasConflict) e.currentTarget.style.background = "#003366"; }}
+                      >
+                        {loading && <div style={{ width: "1rem", height: "1rem", border: "2px solid #fff", borderTopColor: "transparent", borderRadius: "50%", animation: "spin 0.7s linear infinite" }} />}
+                        {editing ? "Update Schedule" : "Add Schedule"}
+                      </button>
+                    </div>
+                  </form>
+                </div>
+
+                {/* Right Column - Occupied Slots (Card Style) */}
+                <div style={{ 
+                  flex: 1.2, 
+                  minWidth: "260px", 
+                  background: "#f8fafc", 
+                  borderRadius: "1rem", 
+                  border: "1px solid #e2e8f0",
+                  overflow: "hidden",
+                  height: "fit-content",
+                  position: "sticky",
+                  top: "0"
+                }}>
+                  {/* Card Header */}
+                  <div style={{ 
+                    padding: "1rem 1.25rem", 
+                    background: "#fff", 
+                    borderBottom: "1px solid #e2e8f0",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "0.5rem"
+                  }}>
+                    <div style={{
+                      width: "28px",
+                      height: "28px",
+                      background: "#eef2ff",
+                      borderRadius: "0.5rem",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center"
+                    }}>
+                      <svg width="14" height="14" fill="none" stroke="#003366" viewBox="0 0 24 24">
+                        <circle cx="12" cy="12" r="10" strokeWidth={2} />
+                        <line x1="12" y1="8" x2="12" y2="12" />
+                        <line x1="12" y1="16" x2="12.01" y2="16" />
+                      </svg>
+                    </div>
+                    <div>
+                      <h4 style={{ fontSize: "0.875rem", fontWeight: 600, color: "#1e293b", margin: 0 }}>
+                        {form.instructor_id ? "Instructor's Schedule" : "Availability Check"}
+                      </h4>
+                      <p style={{ fontSize: "0.65rem", color: "#64748b", margin: 0 }}>
+                        {form.instructor_id ? "Existing schedules for selected instructor" : "Select an instructor to view"}
+                      </p>
+                    </div>
                   </div>
-                  <p style={{ fontSize: "0.65rem", color: "#64748b", marginTop: "0.25rem" }}>Status will be automatically evaluated based on time.</p>
+
+                  {/* Card Body */}
+                  <div style={{ padding: "1rem 1.25rem" }}>
+                    {!form.instructor_id ? (
+                      <div style={{ textAlign: "center", padding: "2rem 1rem" }}>
+                        <svg width="48" height="48" fill="none" stroke="#94a3b8" viewBox="0 0 24 24" style={{ margin: "0 auto 0.75rem" }}>
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                        </svg>
+                        <p style={{ fontSize: "0.75rem", color: "#94a3b8", margin: 0 }}>Select an instructor first</p>
+                      </div>
+                    ) : !form.day ? (
+                      <div style={{ textAlign: "center", padding: "2rem 1rem" }}>
+                        <svg width="48" height="48" fill="none" stroke="#94a3b8" viewBox="0 0 24 24" style={{ margin: "0 auto 0.75rem" }}>
+                          <rect x="3" y="4" width="18" height="18" rx="2" ry="2" strokeWidth={1.5} />
+                          <line x1="16" y1="2" x2="16" y2="6" />
+                          <line x1="8" y1="2" x2="8" y2="6" />
+                          <line x1="3" y1="10" x2="21" y2="10" />
+                        </svg>
+                        <p style={{ fontSize: "0.75rem", color: "#94a3b8", margin: 0 }}>Select a day to check availability</p>
+                      </div>
+                    ) : occupiedSlots.length === 0 ? (
+                      <div style={{ textAlign: "center", padding: "1.5rem" }}>
+                        <div style={{
+                          width: "48px",
+                          height: "48px",
+                          background: "#dcfce7",
+                          borderRadius: "50%",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          margin: "0 auto 0.75rem"
+                        }}>
+                          <svg width="24" height="24" fill="none" stroke="#15803d" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                          </svg>
+                        </div>
+                        <p style={{ fontSize: "0.813rem", fontWeight: 500, color: "#15803d", margin: 0 }}>✓ All slots available for {form.day}</p>
+                        <p style={{ fontSize: "0.7rem", color: "#64748b", marginTop: "0.25rem" }}>No existing schedules found for this day</p>
+                      </div>
+                    ) : (
+                      <>
+                        <div style={{ marginBottom: "1rem" }}>
+                          <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginBottom: "0.5rem" }}>
+                            <div style={{ width: "8px", height: "8px", borderRadius: "50%", background: "#ef4444" }} />
+                            <span style={{ fontSize: "0.7rem", fontWeight: 500, color: "#475569" }}>
+                              {occupiedSlots.length} existing schedule{occupiedSlots.length !== 1 ? "s" : ""} on {form.day}
+                            </span>
+                          </div>
+                        </div>
+                        
+                        <div style={{ display: "flex", flexDirection: "column", gap: "0.625rem" }}>
+                          {occupiedSlots.map((slot, idx) => (
+                            <div 
+                              key={idx} 
+                              style={{ 
+                                padding: "0.625rem 0.875rem", 
+                                background: "#fff", 
+                                borderRadius: "0.5rem", 
+                                border: "1px solid #fecaca",
+                                boxShadow: "0 1px 2px rgba(0,0,0,0.03)"
+                              }}
+                            >
+                              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "0.25rem" }}>
+                                <span style={{ fontSize: "0.7rem", fontWeight: 600, color: "#dc2626" }}>
+                                  {formatTimeDisplay(slot.start)} — {formatTimeDisplay(slot.end)}
+                                </span>
+                              </div>
+                              <p style={{ fontSize: "0.7rem", color: "#64748b", margin: 0, display: "flex", alignItems: "center", gap: "0.25rem" }}>
+                                <svg width="10" height="10" fill="none" stroke="#64748b" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                </svg>
+                                {slot.subject}
+                              </p>
+                            </div>
+                          ))}
+                        </div>
+                        
+                        <div style={{ 
+                          marginTop: "1rem", 
+                          padding: "0.625rem", 
+                          background: "#fef3c7", 
+                          borderRadius: "0.5rem",
+                          border: "1px solid #fde68a"
+                        }}>
+                          <p style={{ fontSize: "0.65rem", color: "#92400e", margin: 0, display: "flex", alignItems: "center", gap: "0.375rem" }}>
+                            <svg width="12" height="12" fill="none" stroke="#92400e" viewBox="0 0 24 24">
+                              <circle cx="12" cy="12" r="10" strokeWidth={2} />
+                              <line x1="12" y1="8" x2="12" y2="12" />
+                              <line x1="12" y1="16" x2="12.01" y2="16" />
+                            </svg>
+                            These time slots are already occupied
+                          </p>
+                        </div>
+                      </>
+                    )}
+                  </div>
+
+                  {/* Card Footer */}
+                  <div style={{ 
+                    padding: "0.75rem 1.25rem", 
+                    background: "#fff", 
+                    borderTop: "1px solid #e2e8f0",
+                    fontSize: "0.65rem",
+                    color: "#94a3b8",
+                    textAlign: "center"
+                  }}>
+                    <span>⏰ Available: 7:00 AM — 9:00 PM | Minimum 1 hour duration</span>
+                  </div>
                 </div>
-                <div style={{ display: "flex", justifyContent: "flex-end", gap: "0.75rem", paddingTop: "0.5rem" }}>
-                  <button type="button" onClick={resetForm} style={{ padding: "0.5rem 1.25rem", border: "1px solid #e2e8f0", borderRadius: "0.5rem", background: "none", fontSize: "0.875rem", cursor: "pointer", color: "#64748b", transition: "background 0.2s" }}
-                    onMouseEnter={e => (e.currentTarget.style.background = "#f8fafc")}
-                    onMouseLeave={e => (e.currentTarget.style.background = "none")}>Cancel</button>
-                  <button type="submit" disabled={loading || pairedDevices.length === 0} style={{ padding: "0.5rem 1.25rem", background: loading || pairedDevices.length === 0 ? "#cbd5e1" : "#003366", color: "#fff", border: "none", borderRadius: "0.5rem", fontSize: "0.875rem", fontWeight: 500, cursor: loading || pairedDevices.length === 0 ? "not-allowed" : "pointer", transition: "background 0.2s" }}
-                    onMouseEnter={e => { if (!loading && pairedDevices.length > 0) e.currentTarget.style.background = "#004c99"; }}
-                    onMouseLeave={e => { if (!loading && pairedDevices.length > 0) e.currentTarget.style.background = "#003366"; }}>
-                    {editing ? "Update Schedule" : "Add Schedule"}
-                  </button>
-                </div>
-              </form>
+              </div>
             </div>
           </div>
         </div>
       )}
 
-      <style>{`
+            <style>{`
         @keyframes spin { to { transform: rotate(360deg); } }
         @keyframes modalPop {
           from { opacity: 0; transform: scale(0.95) translateY(-8px); }
           to   { opacity: 1; transform: scale(1) translateY(0); }
+        }
+        input:focus, select:focus {
+          border-color: #003366;
+          box-shadow: 0 0 0 3px rgba(0, 51, 102, 0.1);
         }
       `}</style>
     </div>

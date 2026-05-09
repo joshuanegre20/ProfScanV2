@@ -167,6 +167,7 @@ class InstructorController extends Controller
             'specialization' => $user->specialization,
             'profile_url'    => $user->profile_url ? url('/api/instructor/photo') : null,
             'qr_payload'     => $user->qr_payload,
+             'is_verified'    => !is_null($user->email_verified_at),
         ]);
         
     } catch (\Exception $e) {
@@ -348,20 +349,35 @@ public function markAbsentManual(Request $request)
     }
 }
 
-    public function updateProfile(Request $request)
-    {
-        $user = $request->user();
+   public function updateProfile(Request $request)
+{
+    $user = $request->user();
 
-        $request->validate([
-            'name'       => 'sometimes|string|max:255',
-            'email'      => 'sometimes|email|unique:users,email,' . $user->id,
-            'department' => 'nullable|string|max:255',
-        ]);
+    $request->validate([
+        'name'           => 'sometimes|string|max:255',
+        'email'          => 'sometimes|email|unique:users,email,' . $user->id,
+        'department'     => 'nullable|string|max:255',
+        'specialization' => 'nullable|string|max:255',
+    ]);
 
-        $user->update($request->only(['name', 'email', 'department']));
+    $user->update($request->only(['name', 'email', 'department', 'specialization']));
 
-        return response()->json(['success' => true, 'message' => 'Profile updated.', 'user' => $user]);
-    }
+    // Reload fresh data from DB
+    $user->refresh();
+
+    return response()->json([
+        'success' => true,
+        'message' => 'Profile updated.',
+        'user'    => [
+            'id'             => $user->id,
+            'name'           => $user->name,
+            'email'          => $user->email,
+            'department'     => $user->department,
+            'specialization' => $user->specialization,
+            'is_verified'    => !is_null($user->email_verified_at),
+        ]
+    ]);
+}
 
     public function changePassword(Request $request)
     {
@@ -627,42 +643,104 @@ public function setOngoing(Request $request)
             'instructor_id' => 'required|string',
         ]);
 
-        $today = now()->format('Y-m-d');
-
-        // Update schedule status to Ongoing
-        DB::table('schedule')
-            ->where('id', $request->schedule_id)
-            ->update(['status' => 'Ongoing']);
-
-        // Check if already logged today
-        $alreadyLogged = DB::table('attendance_logs_db')
-            ->where('instructor_id', $request->instructor_id)
-            ->where('schedule_id',   $request->schedule_id)
-            ->where('date',          $today)
-            ->exists();
-
-        if (!$alreadyLogged) {
-            DB::table('attendance_logs_db')->insert([
-                'instructor_id' => $request->instructor_id,
-                'schedule_id'   => $request->schedule_id,
-                'room'          => $request->room     ?? null,
-                'subject'       => $request->subject  ?? null,
-                'code'          => $request->code     ?? null,
-                'day'           => $request->day      ?? null,
-                'time_in'       => null,
-                'time_out'      => $request->end_time ?? null,
-                'date'          => $today,
-                'status'        => 'Absent',
-                'created_at'    => now(),
-                'updated_at'    => now(),
+        $nowPH = now()->setTimezone('Asia/Manila');
+        $today = $nowPH->format('Y-m-d');
+        $currentTime = $nowPH->format('H:i:s');
+        
+        // Get today's day group
+        $dayOfWeek = $nowPH->dayOfWeek;
+        $todayGroup = match($dayOfWeek) {
+            1,3,5 => 'MWF',
+            2,4   => 'TTH',
+            6     => 'SAT',
+            0     => 'SUN',
+            default => ''
+        };
+        
+        // Get schedule details
+        $schedule = DB::table('schedule')->where('id', $request->schedule_id)->first();
+        
+        if (!$schedule) {
+            return response()->json(['success' => false, 'message' => 'Schedule not found'], 404);
+        }
+        
+        // CRITICAL FIX: Only update if schedule is for today's day group
+        if ($schedule->day !== $todayGroup) {
+            // Not today's schedule - ensure it's set to Upcoming
+            if ($schedule->status !== 'Upcoming') {
+                DB::table('schedule')
+                    ->where('id', $request->schedule_id)
+                    ->update([
+                        'status' => 'Upcoming',
+                        'updated_at' => $nowPH
+                    ]);
+            }
+            
+            return response()->json([
+                'success' => true,
+                'message' => "Schedule is for {$schedule->day}, not today ({$todayGroup}). Status remains Upcoming.",
+                'status' => 'Upcoming'
             ]);
         }
-
+        
+        // For today's schedule, determine status based on time
+        $newStatus = $schedule->status;
+        
+        // If end time has passed, mark as Absent
+        if ($schedule->end_time && $currentTime > $schedule->end_time) {
+            $newStatus = 'Absent';
+        }
+        // If current time is within schedule range, mark as Ongoing
+        else if ($schedule->time && $currentTime >= $schedule->time && (!$schedule->end_time || $currentTime <= $schedule->end_time)) {
+            $newStatus = 'Ongoing';
+        }
+        // If time hasn't started yet, keep as Upcoming
+        else if ($schedule->time && $currentTime < $schedule->time) {
+            $newStatus = 'Upcoming';
+        }
+        
+        // Only update if status changed
+        if ($schedule->status !== $newStatus) {
+            DB::table('schedule')
+                ->where('id', $request->schedule_id)
+                ->update([
+                    'status' => $newStatus,
+                    'updated_at' => $nowPH
+                ]);
+        }
+        
+        // Create absent record if needed
+        if ($newStatus === 'Absent') {
+            $alreadyLogged = DB::table('attendance_logs_db')
+                ->where('instructor_id', $request->instructor_id)
+                ->where('schedule_id', $request->schedule_id)
+                ->where('date', $today)
+                ->exists();
+                
+            if (!$alreadyLogged) {
+                DB::table('attendance_logs_db')->insert([
+                    'instructor_id' => $request->instructor_id,
+                    'schedule_id'   => $request->schedule_id,
+                    'room'          => $schedule->room ?? null,
+                    'subject'       => $schedule->subject ?? null,
+                    'code'          => $schedule->subject_code ?? null,
+                    'day'           => $schedule->day ?? null,
+                    'time_in'       => null,
+                    'time_out'      => $schedule->end_time ?? null,
+                    'date'          => $today,
+                    'status'        => 'Absent',
+                    'created_at'    => $nowPH,
+                    'updated_at'    => $nowPH,
+                ]);
+            }
+        }
+        
         return response()->json([
             'success' => true,
-            'message' => 'Schedule set to Ongoing and absent log inserted'
+            'message' => "Schedule status set to {$newStatus}",
+            'status' => $newStatus
         ]);
-
+        
     } catch (\Exception $e) {
         \Log::error('Set ongoing error: ' . $e->getMessage());
         return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
@@ -805,9 +883,9 @@ public function staffMe(Request $request)
         'status'      => $user->status,
         'role'        => $user->role,
         'created_at'  => $user->created_at,
-        'profile_url' => $user->profile_url
-                            ? url('/api/staff/photo/me')
-                            : null,
+        'profile_url' => $user->profile_url ? url('/api/staff/photo/me') : null,
+        'is_verified' => $user->is_verified ?? false,  // Add this
+        'email_verified_at' => $user->email_verified_at,  // Add this
     ]);
 }
 
@@ -816,7 +894,7 @@ public function staffUpdateProfile(Request $request)
     $user = $request->user();
     $data = $request->validate([
         'name'       => 'sometimes|string|max:255',
-        'email'      => 'sometimes|email|unique:users,email,' . $user->id,
+        'email'      => 'sometimes|email|unique:users,email,' . $user->id, // ← add ,$user->id
         'contact_no' => 'nullable|string|max:20',
         'address'    => 'nullable|string',
         'gender'     => 'nullable|in:Male,Female',
@@ -1041,5 +1119,11 @@ public function getRecentAbsentLogs(Request $request)
             'message' => $e->getMessage()
         ], 500);
     }
+}
+public function bulkDeleteLateRecords(Request $request)
+{
+    $ids = $request->input('ids', []);
+    DB::table('attendance_logs_db')->whereIn('id', $ids)->delete();
+    return response()->json(['message' => 'Records deleted successfully']);
 }
 }

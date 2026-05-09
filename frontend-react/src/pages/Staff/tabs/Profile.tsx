@@ -1,241 +1,890 @@
-// src/pages/Staff/tabs/ProfileTab.tsx
-import React, { useState, useEffect } from "react";
+// src/pages/Instructor/tabs/SettingsTab.tsx
+import React, { useEffect, useState } from "react";
 import api from "../../../api/axios";
 
-interface StaffProfile {
+interface Instructor {
   id: number;
   name: string;
   email: string;
-  staff_id: string;
-  contact_no?: string;
-  address?: string;
-  birth_date?: string;
-  gender?: string;
-  age?: number;
-  status: string;
-  role: string;
-  created_at: string;
+  instructor_id: string;
+  department: string;
+  specialization?: string;
+  email_verified_at?: string | null; 
+  is_verified: boolean;
   profile_url?: string | null;
 }
 
-const glassCardStyle = {
-  background: "rgba(255, 255, 255, 0.95)",
-  backdropFilter: "blur(10px)",
-  borderRadius: "1rem",
-  boxShadow: "0 1px 3px rgba(0,0,0,0.08)",
-  border: "1px solid rgba(255, 255, 255, 0.2)",
-  overflow: "hidden",
-};
+export default function SettingsTab() {
+  const [instructor, setInstructor] = useState<Instructor | null>(null);
+  const [form, setForm] = useState({ 
+    name: "", 
+    email: "", 
+    department: "", 
+    specialization: "" 
+  });
+  const [originalEmail, setOriginalEmail] = useState("");
+  const [passwords, setPasswords] = useState({ 
+    current: "", 
+    new_password: "", 
+    confirm: "" 
+  });
+  
+  // Profile image states
+  const [profileImage, setProfileImage] = useState<string | null>(null);
+  const [uploadingImage, setUploadingImage] = useState(false);
+  
+  // Email verification states
+  const [showVerificationModal, setShowVerificationModal] = useState(false);
+  const [verificationCode, setVerificationCode] = useState("");
+  const [generatedOtp, setGeneratedOtp] = useState<number | null>(null);
+  const [isVerifying, setIsVerifying] = useState(false);
+  const [verificationMessage, setVerificationMessage] = useState("");
+  const [resendTimer, setResendTimer] = useState(0);
+  const [isSendingOtp, setIsSendingOtp] = useState(false);
+  
+  const [saving, setSaving] = useState(false);
+  const [savingPw, setSavingPw] = useState(false);
 
-const inputStyle: React.CSSProperties = {
-  width: "100%", padding: "0.625rem 1rem", border: "1px solid #e2e8f0",
-  borderRadius: "0.5rem", fontSize: "0.875rem", outline: "none", boxSizing: "border-box",
-  transition: "all 0.2s",
-};
+  useEffect(() => {
+    fetchInstructorData();
+  }, []);
 
-const labelStyle: React.CSSProperties = {
-  display: "block", fontSize: "0.7rem", fontWeight: 600, color: "#475569",
-  textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: "0.375rem",
-};
+  useEffect(() => {
+    if (resendTimer > 0) {
+      const timer = setTimeout(() => setResendTimer(resendTimer - 1), 1000);
+      return () => clearTimeout(timer);
+    }
+  }, [resendTimer]);
 
-export default function ProfileTab() {
-  const [profile, setProfile]   = useState<StaffProfile | null>(null);
-  const [photo, setPhoto]       = useState<string | null>(null);
-  const [loading, setLoading]   = useState(true);
-  const [editing, setEditing]   = useState(false);
-  const [saving, setSaving]     = useState(false);
-  const [uploading, setUploading] = useState(false);
-  const [form, setForm]         = useState<Partial<StaffProfile>>({});
-  const [success, setSuccess]   = useState(false);
-
-  useEffect(() => { fetchProfile(); }, []);
-
-  const fetchProfile = async () => {
-    setLoading(true);
+  const fetchInstructorData = async () => {
     try {
-      const res = await api.get("/staff/me");
-      const data: StaffProfile = res.data?.data ?? res.data;
-      setProfile(data);
-      setForm(data ?? {});
-
-      if (data?.profile_url) {
-        api.get("/staff/photo/me", { responseType: "blob" })
-          .then(r => setPhoto(URL.createObjectURL(r.data)))
-          .catch(() => setPhoto(null));
-      } else {
-        setPhoto(null);
+      const res = await api.get("/instructor/me");
+      setInstructor(res.data);
+      setOriginalEmail(res.data.email);
+      setForm({
+        name: res.data.name || "",
+        email: res.data.email || "",
+        department: res.data.department || "",
+        specialization: res.data.specialization || "",
+      });
+      
+      // Fetch profile image if exists
+      if (res.data.profile_url) {
+        try {
+          const imgRes = await api.get("/instructor/photo", { responseType: "blob" });
+          const url = URL.createObjectURL(imgRes.data);
+          setProfileImage(url);
+        } catch (error) {
+          console.error("Failed to load profile image:", error);
+        }
       }
-    } catch {
-      setProfile(null);
-    } finally {
-      setLoading(false);
+    } catch (error) {
+      console.error("Failed to fetch instructor data:", error);
     }
   };
 
-  const handlePhotoChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  // Handle profile image upload
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    if (!file.type.startsWith("image/")) return alert("Please upload an image file.");
-    if (file.size > 2 * 1024 * 1024) return alert("Max file size is 2MB.");
-
-    setUploading(true);
+    
+    if (!file.type.startsWith("image/")) {
+      alert("Please upload an image file.");
+      return;
+    }
+    
+    if (file.size > 2 * 1024 * 1024) {
+      alert("File size must be less than 2MB.");
+      return;
+    }
+    
+    setUploadingImage(true);
     const formData = new FormData();
     formData.append("photo", file);
+    
     try {
-      await api.post("/staff/avatar", formData, {
+      await api.post("/instructor/avatar", formData, {
         headers: { "Content-Type": "multipart/form-data" },
       });
-      fetchProfile();
-    } catch {
-      alert("Failed to upload photo.");
+      
+      // Refresh profile image
+      const imgRes = await api.get("/instructor/photo", { responseType: "blob" });
+      const url = URL.createObjectURL(imgRes.data);
+      setProfileImage(url);
+      
+      alert("Profile image updated successfully!");
+    } catch (error: any) {
+      console.error("Failed to upload image:", error);
+      alert(error.response?.data?.message || "Failed to upload image.");
     } finally {
-      setUploading(false);
+      setUploadingImage(false);
     }
   };
 
-  const handleSave = async () => {
+  // Send verification email for current email
+  const sendVerificationEmail = async () => {
+    if (!instructor) return;
+    
+    if (instructor.is_verified) {
+      alert("Your email is already verified!");
+      return;
+    }
+    
+    setIsSendingOtp(true);
+    setVerificationMessage("");
+    
+    const otp = Math.floor(100000 + Math.random() * 900000);
+    setGeneratedOtp(otp);
+    
+    try {
+      const response = await api.post("/auth/send-verification-code", {
+        email: instructor.email,
+        otp: otp,
+      });
+      
+      if (response.data.success) {
+        setVerificationMessage(`✓ Verification code sent to ${instructor.email}! Please check your email.`);
+        setResendTimer(60);
+        setShowVerificationModal(true);
+        setVerificationCode("");
+      } else {
+        alert(response.data.message || "Failed to send verification code");
+      }
+    } catch (error: any) {
+      console.error("Send verification error:", error);
+      alert(error.response?.data?.message || "Failed to send verification code");
+    } finally {
+      setIsSendingOtp(false);
+    }
+  };
+
+  // Resend verification code
+  const resendVerificationCode = async () => {
+    if (resendTimer > 0 || !instructor) return;
+    
+    setVerificationMessage("");
+    setIsSendingOtp(true);
+    
+    const otp = Math.floor(100000 + Math.random() * 900000);
+    setGeneratedOtp(otp);
+    
+    try {
+      const response = await api.post("/auth/resend-verification", {
+        email: instructor.email,
+        otp: otp,
+      });
+      
+      if (response.data.success) {
+        setVerificationMessage("✓ New verification code sent! Please check your email.");
+        setResendTimer(60);
+      } else {
+        setVerificationMessage(response.data.message || "Failed to resend code");
+      }
+    } catch (error: any) {
+      console.error("Resend verification error:", error);
+      setVerificationMessage(error.response?.data?.message || "Failed to resend code");
+    } finally {
+      setIsSendingOtp(false);
+    }
+  };
+
+  // Verify the OTP for current email
+  const verifyEmail = async () => {
+    if (!instructor) return;
+    
+    if (!verificationCode || verificationCode.length !== 6) {
+      setVerificationMessage("Please enter a valid 6-digit code");
+      return;
+    }
+
+    if (parseInt(verificationCode) !== generatedOtp) {
+      setVerificationMessage("Invalid verification code. Please try again.");
+      return;
+    }
+
+    setIsVerifying(true);
+    setVerificationMessage("");
+
+    try {
+      const response = await api.post("/auth/verify-email", {
+        email: instructor.email,
+        otp: parseInt(verificationCode),
+      });
+
+      if (response.data.success) {
+        setVerificationMessage("✓ Email verified successfully!");
+        setTimeout(() => {
+          setShowVerificationModal(false);
+          setVerificationCode("");
+          setGeneratedOtp(null);
+          fetchInstructorData();
+        }, 1500);
+      } else {
+        setVerificationMessage(response.data.message || "Verification failed");
+      }
+    } catch (error: any) {
+      console.error("Verification error:", error);
+      setVerificationMessage(error.response?.data?.message || "Verification failed");
+    } finally {
+      setIsVerifying(false);
+    }
+  };
+
+  // Save profile
+  const handleProfileSave = async (e: React.FormEvent) => {
+    e.preventDefault();
+
+    if (instructor?.is_verified && form.email !== originalEmail) {
+      alert("Email cannot be changed once verified. Please contact administrator for assistance.");
+      setForm(prev => ({ ...prev, email: originalEmail }));
+      return;
+    }
+
     setSaving(true);
     try {
-      await api.put("/staff/profile", {
-        name:       form.name,
-        email:      form.email,
-        contact_no: form.contact_no,
-        address:    form.address,
-        gender:     form.gender,
+      const response = await api.put("/instructor/profile", {
+        name: form.name,
+        email: form.email,
+        department: form.department,
+        specialization: form.specialization,
       });
-      setEditing(false);
-      setSuccess(true);
-      setTimeout(() => setSuccess(false), 3000);
-      fetchProfile();
-    } catch (err: any) {
-      alert(err.response?.data?.message ?? "Failed to update profile.");
+      
+      if (response.data.success) {
+        const updatedUser = response.data.user;
+        
+        setInstructor(updatedUser);
+        setOriginalEmail(updatedUser.email);
+        setForm({
+          name: updatedUser.name || "",
+          email: updatedUser.email || "",
+          department: updatedUser.department || "",
+          specialization: form.specialization,
+        });
+        
+        if (form.email !== originalEmail) {
+          alert(`Profile updated! Your email has been changed to ${form.email}. Please verify your new email address.`);
+        } else {
+          alert("Profile updated successfully!");
+        }
+        
+        await fetchInstructorData();
+      } else {
+        alert(response.data.message || "Failed to update profile.");
+      }
+    } catch (error: any) {
+      console.error("Profile update error:", error);
+      alert(error.response?.data?.message || "Failed to update profile.");
     } finally {
       setSaving(false);
     }
   };
 
-  const initials = profile?.name?.split(" ").map(w => w[0]).slice(0, 2).join("").toUpperCase() ?? "S";
+  // Change password
+  const handlePasswordSave = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (passwords.new_password !== passwords.confirm) {
+      alert("Passwords do not match.");
+      return;
+    }
+    if (passwords.new_password.length < 8) {
+      alert("Password must be at least 8 characters.");
+      return;
+    }
 
-  if (loading) return <div style={{ textAlign: "center", padding: "3rem", color: "rgba(255,255,255,0.7)" }}>Loading profile...</div>;
+    setSavingPw(true);
+    try {
+      await api.post("/instructor/change-password", {
+        current_password: passwords.current,
+        new_password: passwords.new_password,
+        new_password_confirmation: passwords.confirm,
+      });
+      setPasswords({ current: "", new_password: "", confirm: "" });
+      alert("Password changed successfully!");
+    } catch (error: any) {
+      console.error("Password change error:", error);
+      alert(error.response?.data?.message || "Failed to change password. Check your current password.");
+    } finally {
+      setSavingPw(false);
+    }
+  };
 
-  if (!profile) return (
-    <div style={{ ...glassCardStyle, padding: "3rem", textAlign: "center", color: "rgba(255,255,255,0.6)" }}>
-      <p>Profile not found.</p>
-    </div>
-  );
+  const inputStyle: React.CSSProperties = {
+    padding: "0.625rem 1rem",
+    border: "1px solid #e2e8f0",
+    borderRadius: "0.5rem",
+    fontSize: "0.875rem",
+    outline: "none",
+    width: "100%",
+    boxSizing: "border-box",
+    fontFamily: "inherit",
+    transition: "border-color 0.2s, box-shadow 0.2s",
+  };
+
+  const labelStyle: React.CSSProperties = {
+    display: "block",
+    fontSize: "0.75rem",
+    fontWeight: 600,
+    color: "#475569",
+    marginBottom: "0.375rem",
+  };
+
+  const initials = instructor?.name?.split(" ").map(w => w[0]).slice(0, 2).join("").toUpperCase() ?? "??";
+
+  if (!instructor) {
+    return (
+      <div style={{ minHeight: "60vh", display: "flex", alignItems: "center", justifyContent: "center" }}>
+        <div style={{ textAlign: "center" }}>
+          <div style={{ width: "40px", height: "40px", border: "3px solid #003366", borderTopColor: "transparent", borderRadius: "50%", animation: "spin 0.6s linear infinite", margin: "0 auto" }} />
+          <p style={{ marginTop: "1rem", color: "#64748b" }}>Loading settings...</p>
+        </div>
+      </div>
+    );
+  }
+
+  const isEmailVerified = instructor.is_verified;
+  const emailChanged = form.email !== originalEmail;
+  const canEditEmail = !isEmailVerified;
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "1.5rem" }}>
+      {/* Profile Information Card */}
+      <div style={{ background: "#fff", borderRadius: "1rem", boxShadow: "0 1px 3px rgba(0,0,0,0.1)", padding: "1.5rem" }}>
+        <h3 style={{
+          fontSize: "1rem",
+          fontWeight: 600,
+          color: "#1e293b",
+          margin: "0 0 1rem",
+          display: "flex",
+          alignItems: "center",
+          gap: "0.5rem",
+          borderBottom: "1px solid #e2e8f0",
+          paddingBottom: "0.75rem"
+        }}>
+          <svg width="20" height="20" fill="none" stroke="#003366" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+          </svg>
+          Profile Information
+        </h3>
 
-      {success && (
-        <div style={{ background: "rgba(34, 197, 94, 0.15)", border: "1px solid rgba(34, 197, 94, 0.3)", borderRadius: "0.5rem", padding: "0.875rem 1.25rem", display: "flex", gap: "0.5rem", alignItems: "center" }}>
-          <svg width="16" height="16" fill="none" stroke="#22c55e" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
-          <span style={{ fontSize: "0.875rem", color: "#22c55e", fontWeight: 600 }}>Profile updated successfully!</span>
-        </div>
-      )}
-
-      <div style={glassCardStyle}>
-        {/* Header */}
-        <div style={{ background: "linear-gradient(135deg, #003366, #0055a4)", padding: "2rem", display: "flex", alignItems: "center", gap: "1.5rem", flexWrap: "wrap" }}>
-          <div style={{ position: "relative", flexShrink: 0 }}>
-            {photo ? (
-              <img src={photo} alt="Profile"
-                style={{ width: "5rem", height: "5rem", borderRadius: "50%", objectFit: "cover", border: "3px solid white" }} />
+        {/* Profile Image Section */}
+        <div style={{ display: "flex", justifyContent: "center", marginBottom: "1.5rem" }}>
+          <div style={{ position: "relative" }}>
+            {profileImage ? (
+              <img
+                src={profileImage}
+                alt="Profile"
+                style={{
+                  width: "100px",
+                  height: "100px",
+                  borderRadius: "50%",
+                  objectFit: "cover",
+                  border: "3px solid #003366",
+                }}
+              />
             ) : (
-              <div style={{ width: "5rem", height: "5rem", borderRadius: "50%", background: "rgba(255,255,255,0.15)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "2rem", fontWeight: 700, color: "#fff", border: "3px solid #ffd700" }}>
-                {initials}
+              <div
+                style={{
+                  width: "100px",
+                  height: "100px",
+                  borderRadius: "50%",
+                  background: "linear-gradient(135deg, #003366, #0055a4)",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  border: "3px solid #003366",
+                }}
+              >
+                <span style={{ fontSize: "2rem", fontWeight: 600, color: "#fff" }}>
+                  {initials}
+                </span>
               </div>
             )}
-            {!uploading ? (
-              <label style={{ position: "absolute", bottom: 0, right: 0, background: "#ffd700", border: "2px solid #fff", borderRadius: "50%", width: "1.75rem", height: "1.75rem", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}
-                title="Change photo">
-                <svg width="12" height="12" fill="none" stroke="#003366" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"/></svg>
-                <input type="file" accept="image/*" onChange={handlePhotoChange} style={{ display: "none" }} />
-              </label>
-            ) : (
-              <div style={{ position: "absolute", bottom: 0, right: 0, background: "#ffd700", border: "2px solid #fff", borderRadius: "50%", width: "1.75rem", height: "1.75rem", display: "flex", alignItems: "center", justifyContent: "center" }}>
-                <div style={{ width: "0.75rem", height: "0.75rem", border: "2px solid #003366", borderTopColor: "transparent", borderRadius: "50%", animation: "spin 0.7s linear infinite" }} />
-              </div>
-            )}
+            <label
+              htmlFor="profile-image-upload"
+              style={{
+                position: "absolute",
+                bottom: 0,
+                right: 0,
+                background: "#003366",
+                borderRadius: "50%",
+                width: "32px",
+                height: "32px",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                cursor: "pointer",
+                border: "2px solid #fff",
+              }}
+            >
+              {uploadingImage ? (
+                <div style={{
+                  width: "14px",
+                  height: "14px",
+                  border: "2px solid #fff",
+                  borderTopColor: "transparent",
+                  borderRadius: "50%",
+                  animation: "spin 0.7s linear infinite"
+                }} />
+              ) : (
+                <svg width="16" height="16" fill="none" stroke="#fff" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
+                  <circle cx="12" cy="13" r="3" />
+                </svg>
+              )}
+              <input
+                id="profile-image-upload"
+                type="file"
+                accept="image/*"
+                onChange={handleImageUpload}
+                style={{ display: "none" }}
+                disabled={uploadingImage}
+              />
+            </label>
           </div>
+        </div>
 
-          <div style={{ flex: 1 }}>
-            <h2 style={{ fontSize: "1.25rem", fontWeight: 700, color: "#fff" }}>{profile.name}</h2>
-            <p style={{ color: "#bfdbfe", fontSize: "0.875rem", marginTop: "0.25rem" }}>{profile.email}</p>
-            <div style={{ display: "flex", gap: "0.5rem", marginTop: "0.5rem", flexWrap: "wrap" }}>
-              <span style={{ fontSize: "0.7rem", fontWeight: 700, padding: "0.2rem 0.6rem", borderRadius: "9999px", background: "rgba(255,255,255,0.15)", color: "#ffd700" }}>
-                {profile.staff_id}
-              </span>
-              <span style={{ fontSize: "0.7rem", fontWeight: 700, padding: "0.2rem 0.6rem", borderRadius: "9999px", background: profile.status === "Active" ? "rgba(34, 197, 94, 0.2)" : "rgba(239, 68, 68, 0.2)", color: profile.status === "Active" ? "#4ade80" : "#f87171" }}>
-                {profile.status}
-              </span>
+        <form onSubmit={handleProfileSave}>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1rem", marginBottom: "1rem", color: "black" }}>
+            <div>
+              <label style={labelStyle}>Full Name *</label>
+              <input
+                type="text"
+                value={form.name}
+                onChange={e => setForm({ ...form, name: e.target.value })}
+                style={inputStyle}
+                required
+              />
             </div>
+            <div>
+              <label style={labelStyle}>
+                Email Address *
+                {isEmailVerified && (
+                  <span style={{ marginLeft: "0.5rem", fontSize: "0.7rem", color: "#16a34a" }}>(Locked - Verified)</span>
+                )}
+              </label>
+              <input
+                type="email"
+                value={form.email}
+                onChange={e => setForm({ ...form, email: e.target.value })}
+                style={{
+                  ...inputStyle,
+                  background: canEditEmail ? "#fff" : "#f8fafc",
+                  cursor: canEditEmail ? "text" : "not-allowed",
+                  color: canEditEmail ? "#1e293b" : "#94a3b8"
+                }}
+                required
+                disabled={!canEditEmail}
+              />
+              {!canEditEmail && (
+                <p style={{ fontSize: "0.7rem", color: "#16a34a", marginTop: "0.5rem" }}>
+                  ✓ Email is verified and locked. Contact administrator to change it.
+                </p>
+              )}
+              {canEditEmail && emailChanged && (
+                <p style={{ fontSize: "0.7rem", color: "#f59e0b", marginTop: "0.25rem" }}>
+                  ⚠️ Email changed. You will need to verify this new email address.
+                </p>
+              )}
+            </div>
+           
           </div>
 
-          <button onClick={() => { setEditing(!editing); if (editing) setForm(profile); }}
-            style={{ background: "rgba(255,255,255,0.1)", border: "1px solid rgba(255,255,255,0.2)", color: "#fff", padding: "0.5rem 1rem", borderRadius: "0.5rem", cursor: "pointer", fontSize: "0.875rem", fontWeight: 500, transition: "all 0.2s" }}
-            onMouseEnter={e => (e.currentTarget.style.background = "rgba(255,255,255,0.2)")}
-            onMouseLeave={e => (e.currentTarget.style.background = "rgba(255,255,255,0.1)")}>
-            {editing ? "Cancel" : "Edit Profile"}
-          </button>
-        </div>
-
-        {/* Details */}
-        <div style={{ padding: "1.5rem 2rem" }}>
-          {editing ? (
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: "1.25rem" }}>
-              {[
-                { label: "Full Name",  key: "name",       type: "text" },
-                { label: "Email",      key: "email",      type: "email" },
-                { label: "Contact No", key: "contact_no", type: "text" },
-              ].map(f => (
-                <div key={f.key}>
-                  <label style={labelStyle}>{f.label}</label>
-                  <input type={f.type} value={(form as any)[f.key] ?? ""} onChange={e => setForm({ ...form, [f.key]: e.target.value })} style={inputStyle} />
+         
+          {/* Email Verification Section */}
+          {!isEmailVerified && (
+            <div style={{ 
+              marginBottom: "1.5rem", 
+              padding: "1rem", 
+              background: "#fef3c7",
+              borderRadius: "0.5rem",
+              border: "1px solid #fde68a"
+            }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: "1rem" }}>
+                <div>
+                  <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                    <svg width="20" height="20" fill="none" stroke="#d97706" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                    </svg>
+                    <span style={{ fontWeight: 600, color: "#d97706" }}>
+                      Email Not Verified
+                    </span>
+                  </div>
+                  <p style={{ fontSize: "0.75rem", color: "#92400e", marginTop: "0.25rem", marginBottom: 0 }}>
+                    Please verify your email address ({instructor.email}) to lock your email and access all features.
+                  </p>
                 </div>
-              ))}
-              <div>
-                <label style={labelStyle}>Gender</label>
-                <select value={form.gender ?? ""} onChange={e => setForm({ ...form, gender: e.target.value })} style={inputStyle}>
-                  <option value="">Select</option>
-                  <option>Male</option>
-                  <option>Female</option>
-                </select>
-              </div>
-              <div style={{ gridColumn: "1 / -1" }}>
-                <label style={labelStyle}>Address</label>
-                <textarea value={form.address ?? ""} onChange={e => setForm({ ...form, address: e.target.value })} rows={2} style={{ ...inputStyle, resize: "vertical" }} />
-              </div>
-              <div style={{ gridColumn: "1 / -1", display: "flex", justifyContent: "flex-end", gap: "0.75rem" }}>
-                <button onClick={() => { setEditing(false); setForm(profile); }} style={{ padding: "0.5rem 1.25rem", border: "1px solid #e2e8f0", borderRadius: "0.5rem", background: "none", fontSize: "0.875rem", cursor: "pointer", color: "#475569" }}>Cancel</button>
-                <button onClick={handleSave} disabled={saving} style={{ padding: "0.5rem 1.25rem", background: saving ? "#94a3b8" : "#003366", color: "#fff", border: "none", borderRadius: "0.5rem", fontSize: "0.875rem", fontWeight: 600, cursor: saving ? "not-allowed" : "pointer" }}>
-                  {saving ? "Saving..." : "Save Changes"}
+                <button
+                  type="button"
+                  onClick={sendVerificationEmail}
+                  disabled={isSendingOtp}
+                  style={{
+                    padding: "0.5rem 1rem",
+                    background: isSendingOtp ? "#d1d5db" : "#d97706",
+                    color: "#fff",
+                    border: "none",
+                    borderRadius: "0.5rem",
+                    fontSize: "0.75rem",
+                    fontWeight: 500,
+                    cursor: isSendingOtp ? "not-allowed" : "pointer",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "0.375rem",
+                    transition: "background 0.2s",
+                  }}
+                  onMouseEnter={(e) => { if (!isSendingOtp) e.currentTarget.style.background = "#b45309"; }}
+                  onMouseLeave={(e) => { if (!isSendingOtp) e.currentTarget.style.background = "#d97706"; }}
+                >
+                  {isSendingOtp ? (
+                    <>
+                      <div style={{ width: "0.75rem", height: "0.75rem", border: "2px solid #fff", borderTopColor: "transparent", borderRadius: "50%", animation: "spin 0.7s linear infinite" }} />
+                      Sending...
+                    </>
+                  ) : (
+                    <>
+                      <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                      </svg>
+                      Verify Email
+                    </>
+                  )}
                 </button>
               </div>
             </div>
-          ) : (
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: "1.25rem" }}>
-              {[
-                { label: "Staff ID",    value: profile.staff_id },
-                { label: "Email",       value: profile.email },
-                { label: "Contact No",  value: profile.contact_no || "—" },
-                { label: "Gender",      value: profile.gender || "—" },
-                { label: "Birth Date",  value: profile.birth_date ? new Date(profile.birth_date).toLocaleDateString() : "—" },
-                { label: "Age",         value: profile.age ? String(profile.age) : "—" },
-                { label: "Member Since",value: new Date(profile.created_at).toLocaleDateString("en-PH", { month: "long", year: "numeric" }) },
-                { label: "Address",     value: profile.address || "—" },
-              ].map(({ label, value }) => (
-                <div key={label}>
-                  <p style={{ ...labelStyle, marginBottom: "0.2rem" }}>{label}</p>
-                  <p style={{ fontSize: "0.875rem", color: "#1e293b", fontWeight: 500 }}>{value}</p>
-                </div>
-              ))}
+          )}
+
+          {isEmailVerified && (
+            <div style={{ 
+              marginBottom: "1.5rem", 
+              padding: "1rem", 
+              background: "#f0fdf4",
+              borderRadius: "0.5rem",
+              border: "1px solid #bbf7d0"
+            }}>
+              <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                <svg width="20" height="20" fill="none" stroke="#16a34a" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                <span style={{ fontWeight: 600, color: "#16a34a" }}>
+                  Email Verified
+                </span>
+              </div>
+              <p style={{ fontSize: "0.75rem", color: "#166534", marginTop: "0.25rem", marginBottom: 0 }}>
+                Your email {instructor.email} has been verified. Email changes are now locked for security.
+              </p>
             </div>
           )}
-        </div>
+
+          <div style={{ display: "flex", justifyContent: "flex-end" }}>
+            <button
+              type="submit"
+              disabled={saving}
+              style={{
+                padding: "0.625rem 1.5rem",
+                background: "#003366",
+                color: "#fff",
+                border: "none",
+                borderRadius: "0.5rem",
+                fontSize: "0.875rem",
+                fontWeight: 500,
+                cursor: "pointer",
+                opacity: saving ? 0.6 : 1,
+                display: "flex",
+                alignItems: "center",
+                gap: "0.5rem",
+                transition: "all 0.2s",
+              }}
+              onMouseEnter={(e) => e.currentTarget.style.background = "#002244"}
+              onMouseLeave={(e) => e.currentTarget.style.background = "#003366"}
+            >
+              {saving && (
+                <div style={{
+                  width: "1rem",
+                  height: "1rem",
+                  border: "2px solid #fff",
+                  borderTopColor: "transparent",
+                  borderRadius: "50%",
+                  animation: "spin 0.7s linear infinite"
+                }} />
+              )}
+              <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4" />
+              </svg>
+              Save Changes
+            </button>
+          </div>
+        </form>
       </div>
 
-      <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+      {/* Change Password Card */}
+      <div style={{ background: "#fff", borderRadius: "1rem", boxShadow: "0 1px 3px rgba(0,0,0,0.1)", padding: "1.5rem" }}>
+        <h3 style={{
+          fontSize: "1rem",
+          fontWeight: 600,
+          color: "#1e293b",
+          margin: "0 0 1rem",
+          display: "flex",
+          alignItems: "center",
+          gap: "0.5rem",
+          borderBottom: "1px solid #e2e8f0",
+          paddingBottom: "0.75rem"
+        }}>
+          <svg width="20" height="20" fill="none" stroke="#003366" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+          </svg>
+          Change Password
+        </h3>
+
+        <form onSubmit={handlePasswordSave}>
+          <div style={{ marginBottom: "1rem", color: "black" }}>
+            <label style={labelStyle}>Current Password *</label>
+            <input
+              type="password"
+              value={passwords.current}
+              onChange={e => setPasswords({ ...passwords, current: e.target.value })}
+              style={inputStyle}
+              required
+            />
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1rem", marginBottom: "1.5rem" }}>
+            <div>
+              <label style={labelStyle}>New Password *</label>
+              <input
+                type="password"
+                value={passwords.new_password}
+                onChange={e => setPasswords({ ...passwords, new_password: e.target.value })}
+                style={inputStyle}
+                required
+              />
+              <p style={{ fontSize: "0.7rem", color: "#94a3b8", marginTop: "0.25rem" }}>Minimum 8 characters</p>
+            </div>
+            <div>
+              <label style={labelStyle}>Confirm Password *</label>
+              <input
+                type="password"
+                value={passwords.confirm}
+                onChange={e => setPasswords({ ...passwords, confirm: e.target.value })}
+                style={inputStyle}
+                required
+              />
+            </div>
+          </div>
+
+          <div style={{ display: "flex", justifyContent: "flex-end" }}>
+            <button
+              type="submit"
+              disabled={savingPw}
+              style={{
+                padding: "0.625rem 1.5rem",
+                background: "#003366",
+                color: "#fff",
+                border: "none",
+                borderRadius: "0.5rem",
+                fontSize: "0.875rem",
+                fontWeight: 500,
+                cursor: "pointer",
+                opacity: savingPw ? 0.6 : 1,
+                display: "flex",
+                alignItems: "center",
+                gap: "0.5rem",
+                transition: "all 0.2s",
+              }}
+              onMouseEnter={(e) => e.currentTarget.style.background = "#002244"}
+              onMouseLeave={(e) => e.currentTarget.style.background = "#003366"}
+            >
+              {savingPw && (
+                <div style={{
+                  width: "1rem",
+                  height: "1rem",
+                  border: "2px solid #fff",
+                  borderTopColor: "transparent",
+                  borderRadius: "50%",
+                  animation: "spin 0.7s linear infinite"
+                }} />
+              )}
+              <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+              </svg>
+              Update Password
+            </button>
+          </div>
+        </form>
+      </div>
+
+      {/* Verification Modal */}
+      {showVerificationModal && instructor && (
+        <div style={{
+          position: "fixed",
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          background: "rgba(0,0,0,0.5)",
+          backdropFilter: "blur(4px)",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          zIndex: 1000,
+        }}>
+          <div style={{
+            background: "#fff",
+            borderRadius: "1rem",
+            padding: "2rem",
+            maxWidth: "420px",
+            width: "90%",
+            boxShadow: "0 20px 25px -5px rgba(0,0,0,0.2)",
+            animation: "slideUp 0.3s ease-out",
+          }}>
+            <div style={{ textAlign: "center", marginBottom: "1.5rem" }}>
+              <div style={{
+                width: "48px",
+                height: "48px",
+                background: "#eef2ff",
+                borderRadius: "9999px",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                margin: "0 auto 1rem",
+              }}>
+                <svg width="24" height="24" fill="none" stroke="#003366" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                </svg>
+              </div>
+              <h3 style={{ margin: "0 0 0.5rem", fontSize: "1.25rem", fontWeight: 600, color: "#1e293b" }}>
+                Email Verification Required
+              </h3>
+              <p style={{ color: "#64748b", fontSize: "0.875rem", margin: 0 }}>
+                We've sent a 6-digit verification code to
+              </p>
+              <p style={{ color: "#003366", fontWeight: 500, fontSize: "0.875rem", marginTop: "0.25rem" }}>
+                {instructor.email}
+              </p>
+              <p style={{ color: "#64748b", fontSize: "0.75rem", marginTop: "0.5rem" }}>
+                Once verified, your email will be locked and cannot be changed.
+              </p>
+            </div>
+
+            <div>
+              <label style={labelStyle}>Verification Code</label>
+              <input
+                type="text"
+                value={verificationCode}
+                onChange={e => setVerificationCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                placeholder="Enter 6-digit code"
+                style={{
+                  ...inputStyle,
+                  fontSize: "1.5rem",
+                  textAlign: "center",
+                  letterSpacing: "0.75rem",
+                  fontFamily: "monospace",
+                  fontWeight: 600,
+                  color: "black",
+                }}
+                maxLength={6}
+                autoFocus
+              />
+            </div>
+
+            {verificationMessage && (
+              <div style={{
+                marginTop: "1rem",
+                padding: "0.75rem",
+                borderRadius: "0.5rem",
+                background: verificationMessage.includes("✓") ? "#f0fdf4" : "#fef2f2",
+                border: verificationMessage.includes("✓") ? "1px solid #bbf7d0" : "1px solid #fecaca",
+                color: verificationMessage.includes("✓") ? "#166534" : "#991b1b",
+                fontSize: "0.875rem",
+                textAlign: "center",
+              }}>
+                {verificationMessage}
+              </div>
+            )}
+
+            <div style={{ display: "flex", gap: "1rem", marginTop: "1.5rem" }}>
+              <button
+                onClick={() => {
+                  setShowVerificationModal(false);
+                  setVerificationCode("");
+                  setVerificationMessage("");
+                  setGeneratedOtp(null);
+                }}
+                style={{
+                  flex: 1,
+                  padding: "0.625rem",
+                  background: "#f1f5f9",
+                  border: "1px solid #e2e8f0",
+                  borderRadius: "0.5rem",
+                  cursor: "pointer",
+                  fontWeight: 500,
+                  color: "#475569",
+                  transition: "all 0.2s",
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={verifyEmail}
+                disabled={isVerifying || verificationCode.length !== 6}
+                style={{
+                  flex: 1,
+                  padding: "0.625rem",
+                  background: "#003366",
+                  color: "#fff",
+                  border: "none",
+                  borderRadius: "0.5rem",
+                  cursor: verificationCode.length === 6 ? "pointer" : "not-allowed",
+                  fontWeight: 500,
+                  opacity: verificationCode.length === 6 ? 1 : 0.5,
+                  transition: "all 0.2s",
+                }}
+              >
+                {isVerifying ? "Verifying..." : "Verify"}
+              </button>
+            </div>
+
+            <div style={{ marginTop: "1rem", textAlign: "center" }}>
+              <button
+                onClick={resendVerificationCode}
+                disabled={resendTimer > 0 || isSendingOtp}
+                style={{
+                  background: "none",
+                  border: "none",
+                  color: "#003366",
+                  cursor: (resendTimer > 0 || isSendingOtp) ? "not-allowed" : "pointer",
+                  fontSize: "0.875rem",
+                  fontWeight: 500,
+                  opacity: (resendTimer > 0 || isSendingOtp) ? 0.5 : 1,
+                }}
+              >
+                {isSendingOtp ? "Sending..." : (resendTimer > 0 ? `Resend code in ${resendTimer}s` : "Resend verification code")}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <style>{`
+        @keyframes spin {
+          to { transform: rotate(360deg); }
+        }
+        @keyframes slideUp {
+          from {
+            opacity: 0;
+            transform: translateY(20px);
+          }
+          to {
+            opacity: 1;
+            transform: translateY(0);
+          }
+        }
+        input:focus {
+          border-color: #003366;
+          box-shadow: 0 0 0 3px rgba(0, 51, 102, 0.1);
+        }
+        button:hover:not(:disabled) {
+          transform: translateY(-1px);
+          box-shadow: 0 4px 12px rgba(0, 51, 102, 0.2);
+        }
+      `}</style>
     </div>
   );
 }

@@ -49,6 +49,7 @@ const statusColors: Record<string, { bg: string; color: string }> = {
   Upcoming: { bg: "#dbeafe", color: "#1d4ed8" },
   Ongoing:  { bg: "#fef9c3", color: "#a16207" },
   Present:  { bg: "#dcfce7", color: "#15803d" },
+  Late:     { bg: "#fed7aa", color: "#c2410c" },
   Absent:   { bg: "#fee2e2", color: "#dc2626" },
   Attended: { bg: "#f3e8ff", color: "#7e22ce" },
 };
@@ -68,6 +69,9 @@ const dayMap: Record<string, string> = {
   'Thursday': 'TTH', 'Friday': 'MWF', 'Saturday': 'SAT', 'Sunday': 'SUN'
 };
 
+// QR States
+type QRState = 'qr' | 'success' | 'no_schedule' | 'error';
+
 export default function DashboardTab({ setActiveTab }: Props) {
   const [instructor, setInstructor]   = useState<Instructor | null>(null);
   const [recentScans, setRecentScans] = useState<ScanLog[]>([]);
@@ -78,6 +82,8 @@ export default function DashboardTab({ setActiveTab }: Props) {
   const [uploading, setUploading]     = useState(false);
   const [imageError, setImageError]   = useState(false);
   const [qrCodeDataUrl, setQrCodeDataUrl] = useState<string | null>(null);
+  const [qrState, setQrState] = useState<QRState>('qr');
+  const [statusMessage, setStatusMessage] = useState<string>("");
   const [stats, setStats] = useState({ totalDays: 0, presentDays: 0, absentDays: 0, totalHours: "0", attendanceRate: 0 });
   const [currentScheduleMessage, setCurrentScheduleMessage] = useState<string>("");
   const [currentScheduleStatus, setCurrentScheduleStatus]   = useState<string>("");
@@ -89,9 +95,6 @@ export default function DashboardTab({ setActiveTab }: Props) {
     const scheduleDayCode = dayMap[currentDay];
     const todaySchedules  = scheds.filter(s => (dayMap[s.day] || s.day) === scheduleDayCode);
 
-
-    console.log('Current page:', window.location.href);
-console.log('Socket env var:', import.meta.env?.VITE_SOCKET_URL);
     if (todaySchedules.length === 0) {
       setCurrentScheduleMessage("No classes scheduled for today");
       setCurrentScheduleStatus("");
@@ -103,11 +106,17 @@ console.log('Socket env var:', import.meta.env?.VITE_SOCKET_URL);
       const scheduleTime = schedule.time.substring(0, 5);
       const endTime      = schedule.end_time ? schedule.end_time.substring(0, 5) : null;
 
+      const hasScanned = schedule.status === "Present" || schedule.status === "Attended" || schedule.status === "Late";
+      
       if (currentTime >= scheduleTime && (!endTime || currentTime <= endTime)) {
-        if (schedule.status === "Present") {
-          setCurrentScheduleMessage(`✅ You are marked PRESENT for ${schedule.subject}`);
+        if (hasScanned) {
+          if (schedule.status === "Late") {
+            setCurrentScheduleMessage(`⚠️ You were LATE for ${schedule.subject} (scanned at ${scheduleTime})`);
+          } else {
+            setCurrentScheduleMessage(`✅ You are marked PRESENT for ${schedule.subject}`);
+          }
         } else if (schedule.status === "Absent") {
-          setCurrentScheduleMessage(`⚠️ You were marked ABSENT for ${schedule.subject}`);
+          setCurrentScheduleMessage(`❌ You were marked ABSENT for ${schedule.subject}`);
         } else {
           setCurrentScheduleMessage(`⏰ TIME TO SCAN! ${schedule.subject} is ongoing (${scheduleTime} - ${endTime || 'ongoing'})`);
         }
@@ -124,9 +133,28 @@ console.log('Socket env var:', import.meta.env?.VITE_SOCKET_URL);
     }
 
     if (!found) {
-      setCurrentScheduleMessage("✅ All classes for today are completed");
+      const anyScanned = todaySchedules.some(s => 
+        s.status === "Present" || s.status === "Attended" || s.status === "Late"
+      );
+      if (anyScanned) {
+        setCurrentScheduleMessage("✅ You have completed today's attendance");
+      } else {
+        setCurrentScheduleMessage("✅ All classes for today are completed");
+      }
       setCurrentScheduleStatus("Completed");
     }
+  }, []);
+
+  // Show different QR states based on scan result
+  const showQRState = useCallback((state: QRState, message: string = "") => {
+    setQrState(state);
+    setStatusMessage(message);
+    
+    // Return to QR code after 3 seconds
+    setTimeout(() => {
+      setQrState('qr');
+      setStatusMessage("");
+    }, 3000);
   }, []);
 
   // ── Fetch schedules silently ──────────────────────────────────
@@ -164,9 +192,27 @@ console.log('Socket env var:', import.meta.env?.VITE_SOCKET_URL);
   useSocket({
     room: "admin",
     onScan: (data) => {
-      // Only refresh if it's this instructor's scan
+      console.log("📱 Scan event received:", data);
       fetchSchedules();
       fetchScanLogs();
+      
+      // Check if this scan was for the current instructor
+      if (data?.instructor?.id === instructor?.id || data?.instructor_id === instructor?.instructor_id) {
+        // Check if scan was successful or rejected
+        if (data?.status === 'rejected' || data?.reason === 'absent' || data?.status === 'no_schedule') {
+          // Show "No Schedule for Today" message
+          showQRState('no_schedule', data?.message || 'No schedule for today');
+        } else if (data?.status === 'rejected' && data?.reason === 'absent') {
+          showQRState('error', 'You have been marked absent for this schedule');
+        } else if (data?.success === true || data?.status === 'Present' || data?.status === 'Late') {
+          // Show success checkmark
+          showQRState('success', '✓ Scan successful! Attendance recorded.');
+        } else if (data?.message?.includes('No schedule') || data?.message?.includes('no ongoing')) {
+          showQRState('no_schedule', 'No ongoing class at this time');
+        } else {
+          showQRState('success', '✓ Scan successful!');
+        }
+      }
     },
     onScheduleUpdate: () => fetchSchedules(),
     onAttendanceUpdate: () => {
@@ -259,6 +305,119 @@ console.log('Socket env var:', import.meta.env?.VITE_SOCKET_URL);
     } catch { return iso; }
   };
 
+  // Render QR content based on state
+  const renderQRContent = () => {
+    switch (qrState) {
+      case 'success':
+        return (
+          <div style={{ 
+            width: "160px", 
+            height: "160px", 
+            display: "flex", 
+            flexDirection: "column",
+            alignItems: "center", 
+            justifyContent: "center",
+            background: "#dcfce7",
+            borderRadius: "0.5rem",
+            animation: "scaleIn 0.3s ease-out",
+          }}>
+            <svg width="60" height="60" fill="none" stroke="#15803d" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
+            </svg>
+          </div>
+        );
+      case 'no_schedule':
+        return (
+          <div style={{ 
+            width: "160px", 
+            height: "160px", 
+            display: "flex", 
+            flexDirection: "column",
+            alignItems: "center", 
+            justifyContent: "center",
+            background: "#fef3c7",
+            borderRadius: "0.5rem",
+            animation: "scaleIn 0.3s ease-out",
+            textAlign: "center",
+            padding: "0.5rem"
+          }}>
+            <svg width="40" height="40" fill="none" stroke="#d97706" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 12h.01" />
+            </svg>
+            <p style={{ fontSize: "0.7rem", color: "#92400e", marginTop: "0.5rem", fontWeight: 500 }}>
+              No Schedule
+            </p>
+          </div>
+        );
+      case 'error':
+        return (
+          <div style={{ 
+            width: "160px", 
+            height: "160px", 
+            display: "flex", 
+            flexDirection: "column",
+            alignItems: "center", 
+            justifyContent: "center",
+            background: "#fee2e2",
+            borderRadius: "0.5rem",
+            animation: "scaleIn 0.3s ease-out",
+            textAlign: "center",
+            padding: "0.5rem"
+          }}>
+            <svg width="40" height="40" fill="none" stroke="#dc2626" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+            <p style={{ fontSize: "0.7rem", color: "#991b1b", marginTop: "0.5rem", fontWeight: 500 }}>
+              Access Denied
+            </p>
+          </div>
+        );
+      default:
+        return qrCodeDataUrl ? (
+          <img 
+            src={qrCodeDataUrl} 
+            alt="QR Code" 
+            style={{ 
+              width: "160px", 
+              height: "160px",
+              transition: "transform 0.3s ease",
+            }} 
+          />
+        ) : null;
+    }
+  };
+
+  // Render status message based on QR state
+  const renderQRMessage = () => {
+    switch (qrState) {
+      case 'success':
+        return (
+          <p style={{ fontSize: "0.875rem", color: "#15803d", textAlign: "center", maxWidth: "280px", fontWeight: 600 }}>
+            ✓ Scan successful! Attendance recorded.
+          </p>
+        );
+      case 'no_schedule':
+        return (
+          <p style={{ fontSize: "0.875rem", color: "#92400e", textAlign: "center", maxWidth: "280px", fontWeight: 500 }}>
+            ⏰ No schedule for today at this time.
+          </p>
+        );
+      case 'error':
+        return (
+          <p style={{ fontSize: "0.875rem", color: "#991b1b", textAlign: "center", maxWidth: "280px", fontWeight: 500 }}>
+            ⚠️ Access denied. Please contact your administrator.
+          </p>
+        );
+      default:
+        return (
+          <p style={{ fontSize: "0.875rem", color: "#475569", textAlign: "center", maxWidth: "280px" }}>
+            Present this QR code to the scanner to mark your attendance.
+          </p>
+        );
+    }
+  };
+
   if (!instructor) {
     return (
       <div style={{ minHeight: "60vh", display: "flex", alignItems: "center", justifyContent: "center" }}>
@@ -322,8 +481,7 @@ console.log('Socket env var:', import.meta.env?.VITE_SOCKET_URL);
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1rem" }}>
             <h3 style={{ fontSize: "1rem", fontWeight: 600, color: "#1e293b" }}>Your QR Code</h3>
             <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
-              <span style={{ fontSize: "0.65rem", background: "#f0fdf4", color: "#16a34a", border: "1px solid #bbf7d0", borderRadius: "999px", padding: "2px 8px" }}>Live · Socket</span>
-              {qrCodeDataUrl && (
+              {qrCodeDataUrl && qrState === 'qr' && (
                 <button onClick={handleDownloadQR} style={{ padding: "0.25rem 0.75rem", background: "#003366", color: "#fff", border: "none", borderRadius: "0.5rem", fontSize: "0.75rem", cursor: "pointer" }}>Download</button>
               )}
             </div>
@@ -335,10 +493,17 @@ console.log('Socket env var:', import.meta.env?.VITE_SOCKET_URL);
             </div>
           ) : qrCodeDataUrl ? (
             <div style={{ display: "flex", flexDirection: "column", alignItems: "center" }}>
-              <div style={{ background: "#fff", padding: "1rem", borderRadius: "0.75rem", border: "1px solid #e2e8f0", marginBottom: "1rem" }}>
-                <img src={qrCodeDataUrl} alt="QR Code" style={{ width: "160px", height: "160px" }} />
+              <div style={{ 
+                background: "#fff", 
+                padding: "1rem", 
+                borderRadius: "0.75rem", 
+                border: "1px solid #e2e8f0", 
+                marginBottom: "1rem",
+                transition: "all 0.3s ease",
+              }}>
+                {renderQRContent()}
               </div>
-              <p style={{ fontSize: "0.875rem", color: "#475569", textAlign: "center", maxWidth: "280px" }}>Present this QR code to the scanner to mark your attendance.</p>
+              {renderQRMessage()}
               <p style={{ marginTop: "0.5rem", fontSize: "0.7rem", fontFamily: "monospace", background: "#f8fafc", padding: "0.25rem 0.75rem", borderRadius: "9999px", color: "#64748b" }}>{instructor.instructor_id}</p>
             </div>
           ) : (
@@ -386,6 +551,8 @@ console.log('Socket env var:', import.meta.env?.VITE_SOCKET_URL);
               const scheduleTime = schedule.time.substring(0, 5);
               const endTime      = schedule.end_time ? schedule.end_time.substring(0, 5) : null;
               const isOngoing    = currentTime >= scheduleTime && (!endTime || currentTime <= endTime);
+              const hasScanned = schedule.status === "Present" || schedule.status === "Attended" || schedule.status === "Late";
+              
               return (
                 <div key={schedule.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "0.75rem", background: "#f8fafc", borderRadius: "0.5rem" }}>
                   <div style={{ display: "flex", alignItems: "center", gap: "1rem", flexWrap: "wrap" }}>
@@ -401,8 +568,13 @@ console.log('Socket env var:', import.meta.env?.VITE_SOCKET_URL);
                     </div>
                   </div>
                   <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
-                    {isOngoing && schedule.status !== 'Present' && schedule.status !== 'Attended' && (
-                      <span style={{ fontSize: "0.7rem", fontWeight: 600, color: "#dc2626" }}>⏰ SCAN NOW</span>
+                    {isOngoing && !hasScanned && schedule.status !== 'Absent' && (
+                      <span style={{ fontSize: "0.7rem", fontWeight: 600, color: "#dc2626", animation: "pulse 1s infinite" }}>⏰ SCAN NOW</span>
+                    )}
+                    {hasScanned && (
+                      <span style={{ fontSize: "0.7rem", fontWeight: 600, color: schedule.status === "Late" ? "#c2410c" : "#15803d" }}>
+                        {schedule.status === "Late" ? "⚠️ Late" : "✅ Scanned"}
+                      </span>
                     )}
                     <span style={{ padding: "0.25rem 0.5rem", borderRadius: "0.375rem", fontSize: "0.7rem", fontWeight: 500, background: statusColors[schedule.status]?.bg || "#f1f5f9", color: statusColors[schedule.status]?.color || "#475569" }}>
                       {schedule.status}
@@ -448,6 +620,16 @@ console.log('Socket env var:', import.meta.env?.VITE_SOCKET_URL);
       <style>{`
         @keyframes spin { to { transform: rotate(360deg); } }
         @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+        @keyframes scaleIn { 
+          from { 
+            transform: scale(0.8); 
+            opacity: 0; 
+          }
+          to { 
+            transform: scale(1); 
+            opacity: 1; 
+          }
+        }
       `}</style>
     </div>
   );

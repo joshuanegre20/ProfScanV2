@@ -12,6 +12,21 @@ export default function Login() {
   const [logoUrl, setLogoUrl] = useState<string | null>(null);
   const [dominantColor, setDominantColor] = useState<string>("#003366");
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
+  const [loginBackground, setLoginBackground] = useState<string | null>(null);
+  
+  // Forgot Password States
+  const [showForgotPassword, setShowForgotPassword] = useState(false);
+  const [resetEmail, setResetEmail] = useState("");
+  const [resetOtp, setResetOtp] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [resetStep, setResetStep] = useState<'email' | 'otp' | 'password'>('email');
+  const [resetToken, setResetToken] = useState<string | null>(null);
+  const [resetMessage, setResetMessage] = useState("");
+  const [resetError, setResetError] = useState("");
+  const [resetTimer, setResetTimer] = useState(0);
+  const [isSendingOtp, setIsSendingOtp] = useState(false);
+  const [generatedOtp, setGeneratedOtp] = useState<number | null>(null);
 
   const navigate = useNavigate();
 
@@ -22,6 +37,15 @@ export default function Login() {
   }, []);
 
   useEffect(() => {
+    if (resetTimer > 0) {
+      const timer = setTimeout(() => setResetTimer(resetTimer - 1), 1000);
+      return () => clearTimeout(timer);
+    }
+  }, [resetTimer]);
+
+  // Fetch logo and login background
+  useEffect(() => {
+    // Fetch logo
     axios.get(`${import.meta.env.VITE_API_URL ?? "http://127.0.0.1:8000"}/api/logo`, { responseType: "blob" })
       .then((res) => {
         const url = URL.createObjectURL(res.data);
@@ -55,7 +79,21 @@ export default function Login() {
         img.src = url;
       })
       .catch(() => {});
+
+    // Fetch login background
+    fetchLoginBackground();
   }, []);
+
+  const fetchLoginBackground = async () => {
+    try {
+      const response = await axios.get(`${import.meta.env.VITE_API_URL ?? "http://127.0.0.1:8000"}/api/login-images`);
+      if (response.data.success && response.data.active) {
+        setLoginBackground(response.data.active);
+      }
+    } catch (error) {
+      console.error("Failed to fetch login background:", error);
+    }
+  };
 
   const submit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -88,9 +126,184 @@ export default function Login() {
     }
   };
 
-  return (
-    <div
-      style={{
+  // Send OTP for password reset
+  const sendResetOtp = async () => {
+    if (!resetEmail) {
+      setResetError("Please enter your email address");
+      return;
+    }
+
+    setIsSendingOtp(true);
+    setResetError("");
+    setResetMessage("");
+
+    const otp = Math.floor(100000 + Math.random() * 900000);
+    setGeneratedOtp(otp);
+
+    try {
+      const response = await api.post("/auth/send-reset-otp", {
+        email: resetEmail,
+        otp: otp,
+      });
+
+      if (response.data.success) {
+        setResetMessage(`Verification code sent to ${resetEmail}! Please check your email.`);
+        setResetStep('otp');
+        setResetTimer(60);
+      } else {
+        setResetError(response.data.message || "Failed to send verification code");
+      }
+    } catch (error: any) {
+      console.error("Send OTP error:", error);
+      setResetError(error.response?.data?.message || "Failed to send verification code");
+    } finally {
+      setIsSendingOtp(false);
+    }
+  };
+
+  // Verify OTP
+  const verifyResetOtp = async () => {
+    if (!resetOtp || resetOtp.length !== 6) {
+      setResetError("Please enter a valid 6-digit code");
+      return;
+    }
+
+    if (parseInt(resetOtp) !== generatedOtp) {
+      setResetError("Invalid verification code. Please try again.");
+      return;
+    }
+
+    setResetError("");
+    setResetMessage("");
+
+    try {
+      const response = await api.post("/auth/verify-reset-otp", {
+        email: resetEmail,
+        otp: parseInt(resetOtp),
+      });
+
+      if (response.data.success) {
+        setResetToken(response.data.token);
+        setResetStep('password');
+        setResetMessage("Verification successful! Please enter your new password.");
+      } else {
+        setResetError(response.data.message || "Verification failed");
+      }
+    } catch (error: any) {
+      console.error("Verify OTP error:", error);
+      setResetError(error.response?.data?.message || "Verification failed");
+    }
+  };
+
+  // Reset password
+  const resetPassword = async () => {
+    if (!newPassword || newPassword.length < 8) {
+      setResetError("Password must be at least 8 characters");
+      return;
+    }
+
+    if (newPassword !== confirmPassword) {
+      setResetError("Passwords do not match");
+      return;
+    }
+
+    setResetError("");
+    setResetMessage("");
+
+    try {
+      const response = await api.post("/auth/reset-password", {
+        email: resetEmail,
+        token: resetToken,
+        password: newPassword,
+        password_confirmation: confirmPassword,
+      });
+
+      if (response.data.success) {
+        setResetMessage("Password reset successfully! Redirecting to login...");
+        setTimeout(() => {
+          setShowForgotPassword(false);
+          setResetStep('email');
+          setResetEmail("");
+          setResetOtp("");
+          setNewPassword("");
+          setConfirmPassword("");
+          setResetToken(null);
+          setGeneratedOtp(null);
+          setResetMessage("");
+          setResetError("");
+        }, 2000);
+      } else {
+        setResetError(response.data.message || "Failed to reset password");
+      }
+    } catch (error: any) {
+      console.error("Reset password error:", error);
+      setResetError(error.response?.data?.message || "Failed to reset password");
+    }
+  };
+
+  // Resend OTP
+  const resendOtp = async () => {
+    if (resetTimer > 0) return;
+    
+    const otp = Math.floor(100000 + Math.random() * 900000);
+    setGeneratedOtp(otp);
+    setIsSendingOtp(true);
+    setResetError("");
+    setResetMessage("");
+
+    try {
+      const response = await api.post("/auth/send-reset-otp", {
+        email: resetEmail,
+        otp: otp,
+      });
+
+      if (response.data.success) {
+        setResetMessage(`New verification code sent to ${resetEmail}!`);
+        setResetTimer(60);
+      } else {
+        setResetError(response.data.message || "Failed to resend code");
+      }
+    } catch (error: any) {
+      console.error("Resend OTP error:", error);
+      setResetError(error.response?.data?.message || "Failed to resend code");
+    } finally {
+      setIsSendingOtp(false);
+    }
+  };
+
+  // Close forgot password modal
+  const closeForgotPassword = () => {
+    setShowForgotPassword(false);
+    setResetStep('email');
+    setResetEmail("");
+    setResetOtp("");
+    setNewPassword("");
+    setConfirmPassword("");
+    setResetToken(null);
+    setGeneratedOtp(null);
+    setResetMessage("");
+    setResetError("");
+    setResetTimer(0);
+  };
+
+  // Background style - use custom image if available, otherwise use gradient
+  const backgroundStyle: React.CSSProperties = loginBackground
+    ? {
+        minHeight: "100vh",
+        width: "100%",
+        position: "relative",
+        backgroundImage: `url(${loginBackground})`,
+        backgroundSize: "cover",
+        backgroundPosition: "center",
+        backgroundRepeat: "no-repeat",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        padding: isMobile ? "1rem" : "1.5rem",
+        boxSizing: "border-box" as const,
+        fontFamily: "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
+      }
+    : {
         minHeight: "100vh",
         width: "100%",
         position: "relative",
@@ -99,23 +312,43 @@ export default function Login() {
         alignItems: "center",
         justifyContent: "center",
         padding: isMobile ? "1rem" : "1.5rem",
-        boxSizing: "border-box",
+        boxSizing: "border-box" as const,
         fontFamily: "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
-      }}
-    >
-      {/* Subtle Pattern Overlay */}
-      <div
-        style={{
-          position: "absolute",
-          top: 0, left: 0, right: 0, bottom: 0,
-          backgroundImage: `radial-gradient(circle at 20% 40%, rgba(255,255,255,0.08) 0%, transparent 50%),
-                            radial-gradient(circle at 80% 70%, rgba(255,215,0,0.08) 0%, transparent 50%)`,
-          pointerEvents: "none",
-        }}
-      />
+      };
 
-      {/* Background seal */}
-      {logoUrl && (
+  return (
+    <div style={backgroundStyle}>
+      {/* Dark overlay for better text visibility when using background image */}
+      {loginBackground && (
+        <div
+          style={{
+            position: "absolute",
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            background: "rgba(0,0,0,0.65)",
+            pointerEvents: "none",
+            zIndex: 1,
+          }}
+        />
+      )}
+
+      {/* Subtle Pattern Overlay (only when no custom background) */}
+      {!loginBackground && (
+        <div
+          style={{
+            position: "absolute",
+            top: 0, left: 0, right: 0, bottom: 0,
+            backgroundImage: `radial-gradient(circle at 20% 40%, rgba(255,255,255,0.08) 0%, transparent 50%),
+                              radial-gradient(circle at 80% 70%, rgba(255,215,0,0.08) 0%, transparent 50%)`,
+            pointerEvents: "none",
+          }}
+        />
+      )}
+
+      {/* Background seal (only when no custom background) */}
+      {!loginBackground && logoUrl && (
         <div
           style={{
             position: "absolute",
@@ -147,7 +380,7 @@ export default function Login() {
           display: "flex",
           flexDirection: isMobile ? "column" : "row",
           overflow: "hidden",
-          zIndex: 1,
+          zIndex: 2,
           position: "relative",
         }}
       >
@@ -397,6 +630,10 @@ export default function Login() {
             <div style={{ display: "flex", justifyContent: "flex-end", marginTop: "-0.375rem" }}>
               <a
                 href="#"
+                onClick={(e) => {
+                  e.preventDefault();
+                  setShowForgotPassword(true);
+                }}
                 style={{ fontSize: "0.75rem", color: dominantColor, textDecoration: "none", fontWeight: 500 }}
                 onMouseEnter={(e) => (e.currentTarget.style.textDecoration = "underline")}
                 onMouseLeave={(e) => (e.currentTarget.style.textDecoration = "none")}
@@ -486,9 +723,339 @@ export default function Login() {
         </div>
       </div>
 
+      {/* Forgot Password Modal */}
+      {showForgotPassword && (
+        <div
+          style={{
+            position: "fixed",
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            background: "rgba(0,0,0,0.5)",
+            backdropFilter: "blur(4px)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            zIndex: 1000,
+            padding: "1rem",
+            color: "black"
+          }}
+          onClick={(e) => {
+            if (e.target === e.currentTarget) closeForgotPassword();
+          }}
+        >
+          <div
+            style={{
+              background: "#fff",
+              borderRadius: "1rem",
+              padding: "2rem",
+              maxWidth: "450px",
+              width: "100%",
+              boxShadow: "0 25px 50px rgba(0,0,0,0.2)",
+              animation: "slideUp 0.3s ease-out",
+            }}
+          >
+            <div style={{ textAlign: "center", marginBottom: "1.5rem" }}>
+              <div
+                style={{
+                  width: "48px",
+                  height: "48px",
+                  background: "#eef2ff",
+                  borderRadius: "9999px",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  margin: "0 auto 1rem",
+                }}
+              >
+                <svg width="24" height="24" fill="none" stroke="#003366" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" />
+                </svg>
+              </div>
+              <h3 style={{ margin: "0 0 0.5rem", fontSize: "1.25rem", fontWeight: 600, color: "#1e293b" }}>
+                Reset Password
+              </h3>
+              <p style={{ color: "#64748b", fontSize: "0.875rem", margin: 0 }}>
+                {resetStep === 'email' && "Enter your email to receive a verification code"}
+                {resetStep === 'otp' && "Enter the 6-digit code sent to your email"}
+                {resetStep === 'password' && "Create a new password for your account"}
+              </p>
+            </div>
+
+            {/* Reset steps content - keep as is from original */}
+            {resetStep === 'email' && (
+              <>
+                <div>
+                  <label style={{ display: "block", fontSize: "0.75rem", fontWeight: 600, color: "#475569", marginBottom: "0.375rem" }}>
+                    Email Address
+                  </label>
+                  <input
+                    type="email"
+                    value={resetEmail}
+                    onChange={(e) => setResetEmail(e.target.value)}
+                    placeholder="Enter your email"
+                    style={{
+                      width: "100%",
+                      padding: "0.625rem 1rem",
+                      border: "1px solid #e2e8f0",
+                      borderRadius: "0.5rem",
+                      fontSize: "0.875rem",
+                      outline: "none",
+                      transition: "all 0.2s",
+                    }}
+                    autoFocus
+                  />
+                </div>
+
+                {resetError && (
+                  <div style={{ marginTop: "1rem", padding: "0.75rem", background: "#fef2f2", borderRadius: "0.5rem", color: "#991b1b", fontSize: "0.875rem" }}>
+                    {resetError}
+                  </div>
+                )}
+
+                {resetMessage && (
+                  <div style={{ marginTop: "1rem", padding: "0.75rem", background: "#f0fdf4", borderRadius: "0.5rem", color: "#166534", fontSize: "0.875rem" }}>
+                    {resetMessage}
+                  </div>
+                )}
+
+                <div style={{ display: "flex", gap: "1rem", marginTop: "1.5rem" }}>
+                  <button
+                    onClick={closeForgotPassword}
+                    style={{
+                      flex: 1,
+                      padding: "0.625rem",
+                      background: "#f1f5f9",
+                      border: "1px solid #e2e8f0",
+                      borderRadius: "0.5rem",
+                      cursor: "pointer",
+                      fontWeight: 500,
+                      color: "#475569",
+                    }}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={sendResetOtp}
+                    disabled={isSendingOtp}
+                    style={{
+                      flex: 1,
+                      padding: "0.625rem",
+                      background: isSendingOtp ? "#cbd5e1" : dominantColor,
+                      color: "#fff",
+                      border: "none",
+                      borderRadius: "0.5rem",
+                      cursor: isSendingOtp ? "not-allowed" : "pointer",
+                      fontWeight: 500,
+                      opacity: isSendingOtp ? 0.6 : 1,
+                    }}
+                  >
+                    {isSendingOtp ? "Sending..." : "Send Code"}
+                  </button>
+                </div>
+              </>
+            )}
+
+            {resetStep === 'otp' && (
+              <>
+                <div>
+                  <label style={{ display: "block", fontSize: "0.75rem", fontWeight: 600, color: "#475569", marginBottom: "0.375rem" }}>
+                    Verification Code
+                  </label>
+                  <input
+                    type="text"
+                    value={resetOtp}
+                    onChange={(e) => setResetOtp(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                    placeholder="Enter 6-digit code"
+                    style={{
+                      width: "100%",
+                      padding: "0.625rem 1rem",
+                      border: "1px solid #e2e8f0",
+                      borderRadius: "0.5rem",
+                      fontSize: "1rem",
+                      textAlign: "center",
+                      letterSpacing: "0.5rem",
+                      fontFamily: "monospace",
+                      fontWeight: 600,
+                      outline: "none",
+                    }}
+                    maxLength={6}
+                    autoFocus
+                  />
+                </div>
+
+                <div style={{ marginTop: "0.5rem", textAlign: "center" }}>
+                  <button
+                    onClick={resendOtp}
+                    disabled={resetTimer > 0 || isSendingOtp}
+                    style={{
+                      background: "none",
+                      border: "none",
+                      color: dominantColor,
+                      cursor: (resetTimer > 0 || isSendingOtp) ? "not-allowed" : "pointer",
+                      fontSize: "0.75rem",
+                      fontWeight: 500,
+                      opacity: (resetTimer > 0 || isSendingOtp) ? 0.5 : 1,
+                    }}
+                  >
+                    {isSendingOtp ? "Sending..." : (resetTimer > 0 ? `Resend code in ${resetTimer}s` : "Resend code")}
+                  </button>
+                </div>
+
+                {resetError && (
+                  <div style={{ marginTop: "1rem", padding: "0.75rem", background: "#fef2f2", borderRadius: "0.5rem", color: "#991b1b", fontSize: "0.875rem" }}>
+                    {resetError}
+                  </div>
+                )}
+
+                {resetMessage && (
+                  <div style={{ marginTop: "1rem", padding: "0.75rem", background: "#f0fdf4", borderRadius: "0.5rem", color: "#166534", fontSize: "0.875rem" }}>
+                    {resetMessage}
+                  </div>
+                )}
+
+                <div style={{ display: "flex", gap: "1rem", marginTop: "1.5rem" }}>
+                  <button
+                    onClick={() => setResetStep('email')}
+                    style={{
+                      flex: 1,
+                      padding: "0.625rem",
+                      background: "#f1f5f9",
+                      border: "1px solid #e2e8f0",
+                      borderRadius: "0.5rem",
+                      cursor: "pointer",
+                      fontWeight: 500,
+                      color: "#475569",
+                    }}
+                  >
+                    Back
+                  </button>
+                  <button
+                    onClick={verifyResetOtp}
+                    style={{
+                      flex: 1,
+                      padding: "0.625rem",
+                      background: dominantColor,
+                      color: "#fff",
+                      border: "none",
+                      borderRadius: "0.5rem",
+                      cursor: "pointer",
+                      fontWeight: 500,
+                    }}
+                  >
+                    Verify
+                  </button>
+                </div>
+              </>
+            )}
+
+            {resetStep === 'password' && (
+              <>
+                <div>
+                  <label style={{ display: "block", fontSize: "0.75rem", fontWeight: 600, color: "#475569", marginBottom: "0.375rem" }}>
+                    New Password
+                  </label>
+                  <input
+                    type="password"
+                    value={newPassword}
+                    onChange={(e) => setNewPassword(e.target.value)}
+                    placeholder="Enter new password"
+                    style={{
+                      width: "100%",
+                      padding: "0.625rem 1rem",
+                      border: "1px solid #e2e8f0",
+                      borderRadius: "0.5rem",
+                      fontSize: "0.875rem",
+                      outline: "none",
+                    }}
+                  />
+                  <p style={{ fontSize: "0.7rem", color: "#94a3b8", marginTop: "0.25rem" }}>Minimum 8 characters</p>
+                </div>
+
+                <div style={{ marginTop: "1rem" }}>
+                  <label style={{ display: "block", fontSize: "0.75rem", fontWeight: 600, color: "#475569", marginBottom: "0.375rem" }}>
+                    Confirm Password
+                  </label>
+                  <input
+                    type="password"
+                    value={confirmPassword}
+                    onChange={(e) => setConfirmPassword(e.target.value)}
+                    placeholder="Confirm new password"
+                    style={{
+                      width: "100%",
+                      padding: "0.625rem 1rem",
+                      border: "1px solid #e2e8f0",
+                      borderRadius: "0.5rem",
+                      fontSize: "0.875rem",
+                      outline: "none",
+                    }}
+                  />
+                </div>
+
+                {resetError && (
+                  <div style={{ marginTop: "1rem", padding: "0.75rem", background: "#fef2f2", borderRadius: "0.5rem", color: "#991b1b", fontSize: "0.875rem" }}>
+                    {resetError}
+                  </div>
+                )}
+
+                {resetMessage && (
+                  <div style={{ marginTop: "1rem", padding: "0.75rem", background: "#f0fdf4", borderRadius: "0.5rem", color: "#166534", fontSize: "0.875rem" }}>
+                    {resetMessage}
+                  </div>
+                )}
+
+                <div style={{ display: "flex", gap: "1rem", marginTop: "1.5rem" }}>
+                  <button
+                    onClick={() => setResetStep('otp')}
+                    style={{
+                      flex: 1,
+                      padding: "0.625rem",
+                      background: "#f1f5f9",
+                      border: "1px solid #e2e8f0",
+                      borderRadius: "0.5rem",
+                      cursor: "pointer",
+                      fontWeight: 500,
+                      color: "#475569",
+                    }}
+                  >
+                    Back
+                  </button>
+                  <button
+                    onClick={resetPassword}
+                    style={{
+                      flex: 1,
+                      padding: "0.625rem",
+                      background: dominantColor,
+                      color: "#fff",
+                      border: "none",
+                      borderRadius: "0.5rem",
+                      cursor: "pointer",
+                      fontWeight: 500,
+                    }}
+                  >
+                    Reset Password
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+
       <style>{`
         @keyframes spin {
           to { transform: rotate(360deg); }
+        }
+        @keyframes slideUp {
+          from {
+            opacity: 0;
+            transform: translateY(20px);
+          }
+          to {
+            opacity: 1;
+            transform: translateY(0);
+          }
         }
       `}</style>
     </div>

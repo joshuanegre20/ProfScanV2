@@ -28,14 +28,17 @@ const errorStyle: React.CSSProperties = {
 };
 
 interface AdminInfo {
+  id: number;
   name: string;
   email: string;
   role: string;
   profile_url: string | null;
+  is_verified?: boolean;
+  email_verified_at?: string | null;
 }
 
 export default function ProfileTab() {
-  const [adminInfo, setAdminInfo] = useState<AdminInfo>({ name: "", email: "", role: "", profile_url: null });
+  const [adminInfo, setAdminInfo] = useState<AdminInfo>({ id: 0, name: "", email: "", role: "", profile_url: null, is_verified: false });
   const [loadingInfo, setLoadingInfo] = useState(true);
   const [isEditing, setIsEditing] = useState(false);
 
@@ -50,17 +53,26 @@ export default function ProfileTab() {
   const [profileSuccess, setProfileSuccess] = useState("");
   const [profileProcessing, setProfileProcessing] = useState(false);
 
-  // Password form
-  const [passwordForm, setPasswordForm] = useState({
-    current_password: "", new_password: "", new_password_confirmation: "",
-  });
+  // Password form - separate state for each field to prevent re-renders
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  
   const [passwordErrors, setPasswordErrors] = useState<Record<string, string>>({});
   const [passwordSuccess, setPasswordSuccess] = useState("");
   const [passwordProcessing, setPasswordProcessing] = useState(false);
-
   const [showCurrent, setShowCurrent] = useState(false);
   const [showNew, setShowNew] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
+
+  // Email verification states
+  const [showVerificationModal, setShowVerificationModal] = useState(false);
+  const [verificationCode, setVerificationCode] = useState("");
+  const [generatedOtp, setGeneratedOtp] = useState<number | null>(null);
+  const [isVerifying, setIsVerifying] = useState(false);
+  const [verificationMessage, setVerificationMessage] = useState("");
+  const [resendTimer, setResendTimer] = useState(0);
+  const [isSendingOtp, setIsSendingOtp] = useState(false);
 
   const loadAvatar = async () => {
     try {
@@ -72,11 +84,30 @@ export default function ProfileTab() {
   };
 
   useEffect(() => {
+    if (resendTimer > 0) {
+      const timer = setTimeout(() => setResendTimer(resendTimer - 1), 1000);
+      return () => clearTimeout(timer);
+    }
+  }, [resendTimer]);
+
+  useEffect(() => {
     api.get("/admin/me")
       .then(res => {
-        setAdminInfo(res.data);
-        setProfileForm({ name: res.data.name, email: res.data.email });
-        if (res.data.profile_url) loadAvatar();
+        const data = res.data;
+        // Convert is_verified to boolean
+        const isVerified = data.is_verified === 1 || data.is_verified === true || data.is_verified === "1";
+        
+        setAdminInfo({
+          id: data.id,
+          name: data.name,
+          email: data.email,
+          role: data.role,
+          profile_url: data.profile_url,
+          is_verified: isVerified,
+          email_verified_at: data.email_verified_at,
+        });
+        setProfileForm({ name: data.name, email: data.email });
+        if (data.profile_url) loadAvatar();
       })
       .catch(() => {})
       .finally(() => setLoadingInfo(false));
@@ -108,6 +139,116 @@ export default function ProfileTab() {
     }
   };
 
+  // Send verification email
+  const sendVerificationEmail = async () => {
+    if (adminInfo.is_verified) {
+      alert("Your email is already verified!");
+      return;
+    }
+
+    setIsSendingOtp(true);
+    setVerificationMessage("");
+    
+    const otp = Math.floor(100000 + Math.random() * 900000);
+    setGeneratedOtp(otp);
+    
+    try {
+      const response = await api.post("/auth/send-verification-code", {
+        email: adminInfo.email,
+        otp: otp,
+      });
+      
+      if (response.data.success) {
+        setVerificationMessage(`✓ Verification code sent to ${adminInfo.email}! Please check your email.`);
+        setResendTimer(60);
+        setShowVerificationModal(true);
+        setVerificationCode("");
+      } else {
+        alert(response.data.message || "Failed to send verification code");
+      }
+    } catch (error: any) {
+      console.error("Send verification error:", error);
+      alert(error.response?.data?.message || "Failed to send verification code");
+    } finally {
+      setIsSendingOtp(false);
+    }
+  };
+
+  // Resend verification code
+  const resendVerificationCode = async () => {
+    if (resendTimer > 0) return;
+    
+    setVerificationMessage("");
+    setIsSendingOtp(true);
+    
+    const otp = Math.floor(100000 + Math.random() * 900000);
+    setGeneratedOtp(otp);
+    
+    try {
+      const response = await api.post("/auth/resend-verification", {
+        email: adminInfo.email,
+        otp: otp,
+      });
+      
+      if (response.data.success) {
+        setVerificationMessage("✓ New verification code sent! Please check your email.");
+        setResendTimer(60);
+      } else {
+        setVerificationMessage(response.data.message || "Failed to resend code");
+      }
+    } catch (error: any) {
+      console.error("Resend verification error:", error);
+      setVerificationMessage(error.response?.data?.message || "Failed to resend code");
+    } finally {
+      setIsSendingOtp(false);
+    }
+  };
+
+  // Verify the OTP
+  const verifyEmail = async () => {
+    if (!verificationCode || verificationCode.length !== 6) {
+      setVerificationMessage("Please enter a valid 6-digit code");
+      return;
+    }
+
+    if (parseInt(verificationCode) !== generatedOtp) {
+      setVerificationMessage("Invalid verification code. Please try again.");
+      return;
+    }
+
+    setIsVerifying(true);
+    setVerificationMessage("");
+
+    try {
+      const response = await api.post("/auth/verify-email", {
+        email: adminInfo.email,
+        otp: parseInt(verificationCode),
+      });
+
+      if (response.data.success) {
+        setVerificationMessage("✓ Email verified successfully!");
+        setTimeout(() => {
+          setShowVerificationModal(false);
+          setVerificationCode("");
+          setGeneratedOtp(null);
+          // Refresh admin info to update verification status
+          api.get("/admin/me").then(res => {
+            const data = res.data;
+            const isVerified = data.is_verified === 1 || data.is_verified === true || data.is_verified === "1";
+            setAdminInfo(prev => ({ ...prev, is_verified: isVerified, email_verified_at: data.email_verified_at }));
+          });
+        }, 1500);
+      } else {
+        setVerificationMessage(response.data.message || "Verification failed");
+      }
+    } catch (error: any) {
+      console.error("Verification error:", error);
+      setVerificationMessage(error.response?.data?.message || "Verification failed");
+    } finally {
+      setIsVerifying(false);
+    }
+  };
+
   const handleUpdateProfile = async (e: React.FormEvent) => {
     e.preventDefault();
     setProfileProcessing(true);
@@ -134,10 +275,31 @@ export default function ProfileTab() {
     setPasswordErrors({});
     setPasswordSuccess("");
 
+    if (newPassword !== confirmPassword) {
+      setPasswordErrors({ confirm: "Passwords do not match" });
+      setPasswordProcessing(false);
+      return;
+    }
+
+    if (newPassword.length < 8) {
+      setPasswordErrors({ new_password: "Password must be at least 8 characters" });
+      setPasswordProcessing(false);
+      return;
+    }
+
     try {
-      await api.post("/admin/change-password", passwordForm);
+      await api.post("/admin/change-password", {
+        current_password: currentPassword,
+        new_password: newPassword,
+        new_password_confirmation: confirmPassword,
+      });
       setPasswordSuccess("Password changed successfully!");
-      setPasswordForm({ current_password: "", new_password: "", new_password_confirmation: "" });
+      setCurrentPassword("");
+      setNewPassword("");
+      setConfirmPassword("");
+      setShowCurrent(false);
+      setShowNew(false);
+      setShowConfirm(false);
     } catch (err: any) {
       if (err.response?.data?.errors) setPasswordErrors(err.response.data.errors);
       else if (err.response?.data?.message) setPasswordErrors({ current_password: err.response.data.message });
@@ -146,52 +308,10 @@ export default function ProfileTab() {
     }
   };
 
-  const setPasswordField = (key: string, value: string) =>
-    setPasswordForm(prev => ({ ...prev, [key]: value }));
-
   const setProfileField = (key: string, value: string) =>
     setProfileForm(prev => ({ ...prev, [key]: value }));
 
-  const PasswordInput = ({
-    field, label, show, onToggle,
-  }: {
-    field: keyof typeof passwordForm;
-    label: string;
-    show: boolean;
-    onToggle: () => void;
-  }) => (
-    <div>
-      <label style={labelStyle}>{label}</label>
-      <div style={{ position: "relative" }}>
-        <input
-          type={show ? "text" : "password"}
-          value={passwordForm[field]}
-          onChange={e => setPasswordField(field, e.target.value)}
-          placeholder="••••••••"
-          required
-          style={{ ...inputStyle, paddingRight: "2.5rem" }}
-          onFocus={e => (e.currentTarget.style.boxShadow = "0 0 0 3px rgba(0,51,102,0.15)")}
-          onBlur={e => (e.currentTarget.style.boxShadow = "none")}
-        />
-        <button
-          type="button" onClick={onToggle}
-          style={{ position: "absolute", right: "0.75rem", top: "50%", transform: "translateY(-50%)", background: "none", border: "none", cursor: "pointer", color: "#94a3b8", padding: 0 }}
-        >
-          {show ? (
-            <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21" />
-            </svg>
-          ) : (
-            <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-            </svg>
-          )}
-        </button>
-      </div>
-      {passwordErrors[field] && <p style={errorStyle}>{passwordErrors[field]}</p>}
-    </div>
-  );
+  const isEmailVerified = adminInfo.is_verified === true;
 
   return (
     <div style={{ fontFamily: "ui-sans-serif, system-ui, sans-serif", maxWidth: "48rem", margin: "0 auto" }}>
@@ -211,7 +331,6 @@ export default function ProfileTab() {
 
       {/* Profile Card */}
       <div style={{ ...glassCardStyle, marginBottom: "1.5rem" }}>
-
         <div style={{ padding: "1rem 1.5rem", borderBottom: "1px solid #e2e8f0", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
           <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
             <svg width="16" height="16" fill="none" stroke="#003366" viewBox="0 0 24 24">
@@ -282,6 +401,94 @@ export default function ProfileTab() {
                   <p style={{ fontSize: "0.7rem", color: "#94a3b8", marginTop: "0.125rem" }}>JPG, PNG, WEBP — max 2MB</p>
                   {avatarSuccess && (
                     <p style={{ fontSize: "0.75rem", color: "#22c55e", marginTop: "0.25rem", fontWeight: 500 }}>✓ {avatarSuccess}</p>
+                  )}
+                </div>
+              </div>
+
+              {/* Email Verification Section */}
+              <div style={{ 
+                marginBottom: "1.5rem", 
+                padding: "1rem", 
+                background: isEmailVerified ? "#f0fdf4" : "#fef3c7",
+                borderRadius: "0.75rem",
+                border: `1px solid ${isEmailVerified ? "#bbf7d0" : "#fde68a"}`
+              }}>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: "1rem" }}>
+                  <div>
+                    <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                      {isEmailVerified ? (
+                        <svg width="20" height="20" fill="none" stroke="#16a34a" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        </svg>
+                      ) : (
+                        <svg width="20" height="20" fill="none" stroke="#d97706" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                        </svg>
+                      )}
+                      <span style={{ fontWeight: 600, color: isEmailVerified ? "#16a34a" : "#d97706" }}>
+                        {isEmailVerified ? "Email Verified" : "Email Not Verified"}
+                      </span>
+                    </div>
+                    <p style={{ fontSize: "0.75rem", color: isEmailVerified ? "#166534" : "#92400e", marginTop: "0.25rem", marginBottom: 0 }}>
+                      {isEmailVerified 
+                        ? `Your email ${adminInfo.email} has been verified.` 
+                        : `Please verify your email address (${adminInfo.email}) to secure your account.`}
+                    </p>
+                  </div>
+                  {!isEmailVerified && (
+                    <button
+                      type="button"
+                      onClick={sendVerificationEmail}
+                      disabled={isSendingOtp}
+                      style={{
+                        padding: "0.5rem 1rem",
+                        background: isSendingOtp ? "#d1d5db" : "#d97706",
+                        color: "#fff",
+                        border: "none",
+                        borderRadius: "0.5rem",
+                        fontSize: "0.75rem",
+                        fontWeight: 500,
+                        cursor: isSendingOtp ? "not-allowed" : "pointer",
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "0.375rem",
+                        transition: "background 0.2s",
+                      }}
+                      onMouseEnter={(e) => { if (!isSendingOtp) e.currentTarget.style.background = "#b45309"; }}
+                      onMouseLeave={(e) => { if (!isSendingOtp) e.currentTarget.style.background = "#d97706"; }}
+                    >
+                      {isSendingOtp ? (
+                        <>
+                          <div style={{ width: "0.75rem", height: "0.75rem", border: "2px solid #fff", borderTopColor: "transparent", borderRadius: "50%", animation: "spin 0.7s linear infinite" }} />
+                          Sending...
+                        </>
+                      ) : (
+                        <>
+                          <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                          </svg>
+                          Verify Email
+                        </>
+                      )}
+                    </button>
+                  )}
+                  {isEmailVerified && (
+                    <div style={{
+                      padding: "0.5rem 1rem",
+                      background: "#f0fdf4",
+                      borderRadius: "0.5rem",
+                      fontSize: "0.75rem",
+                      fontWeight: 500,
+                      color: "#16a34a",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "0.375rem",
+                    }}>
+                      <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                      </svg>
+                      Verified
+                    </div>
                   )}
                 </div>
               </div>
@@ -382,9 +589,101 @@ export default function ProfileTab() {
         </div>
 
         <form onSubmit={handleChangePassword} style={{ padding: "1.5rem", display: "flex", flexDirection: "column", gap: "1.25rem" }}>
-          <PasswordInput field="current_password" label="Current Password *" show={showCurrent} onToggle={() => setShowCurrent(p => !p)} />
-          <PasswordInput field="new_password" label="New Password *" show={showNew} onToggle={() => setShowNew(p => !p)} />
-          <PasswordInput field="new_password_confirmation" label="Confirm New Password *" show={showConfirm} onToggle={() => setShowConfirm(p => !p)} />
+          <div>
+            <label style={labelStyle}>Current Password *</label>
+            <div style={{ position: "relative" }}>
+              <input
+                type={showCurrent ? "text" : "password"}
+                value={currentPassword}
+                onChange={e => setCurrentPassword(e.target.value)}
+                placeholder="••••••••"
+                required
+                style={{ ...inputStyle, paddingRight: "2.5rem" }}
+                onFocus={e => (e.currentTarget.style.boxShadow = "0 0 0 3px rgba(0,51,102,0.15)")}
+                onBlur={e => (e.currentTarget.style.boxShadow = "none")}
+              />
+              <button
+                type="button" onClick={() => setShowCurrent(!showCurrent)}
+                style={{ position: "absolute", right: "0.75rem", top: "50%", transform: "translateY(-50%)", background: "none", border: "none", cursor: "pointer", color: "#94a3b8", padding: 0 }}
+              >
+                {showCurrent ? (
+                  <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21" />
+                  </svg>
+                ) : (
+                  <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                  </svg>
+                )}
+              </button>
+            </div>
+            {passwordErrors.current_password && <p style={errorStyle}>{passwordErrors.current_password}</p>}
+          </div>
+
+          <div>
+            <label style={labelStyle}>New Password *</label>
+            <div style={{ position: "relative" }}>
+              <input
+                type={showNew ? "text" : "password"}
+                value={newPassword}
+                onChange={e => setNewPassword(e.target.value)}
+                placeholder="••••••••"
+                required
+                style={{ ...inputStyle, paddingRight: "2.5rem" }}
+                onFocus={e => (e.currentTarget.style.boxShadow = "0 0 0 3px rgba(0,51,102,0.15)")}
+                onBlur={e => (e.currentTarget.style.boxShadow = "none")}
+              />
+              <button
+                type="button" onClick={() => setShowNew(!showNew)}
+                style={{ position: "absolute", right: "0.75rem", top: "50%", transform: "translateY(-50%)", background: "none", border: "none", cursor: "pointer", color: "#94a3b8", padding: 0 }}
+              >
+                {showNew ? (
+                  <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21" />
+                  </svg>
+                ) : (
+                  <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                  </svg>
+                )}
+              </button>
+            </div>
+            {passwordErrors.new_password && <p style={errorStyle}>{passwordErrors.new_password}</p>}
+          </div>
+
+          <div>
+            <label style={labelStyle}>Confirm New Password *</label>
+            <div style={{ position: "relative" }}>
+              <input
+                type={showConfirm ? "text" : "password"}
+                value={confirmPassword}
+                onChange={e => setConfirmPassword(e.target.value)}
+                placeholder="••••••••"
+                required
+                style={{ ...inputStyle, paddingRight: "2.5rem" }}
+                onFocus={e => (e.currentTarget.style.boxShadow = "0 0 0 3px rgba(0,51,102,0.15)")}
+                onBlur={e => (e.currentTarget.style.boxShadow = "none")}
+              />
+              <button
+                type="button" onClick={() => setShowConfirm(!showConfirm)}
+                style={{ position: "absolute", right: "0.75rem", top: "50%", transform: "translateY(-50%)", background: "none", border: "none", cursor: "pointer", color: "#94a3b8", padding: 0 }}
+              >
+                {showConfirm ? (
+                  <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21" />
+                  </svg>
+                ) : (
+                  <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                  </svg>
+                )}
+              </button>
+            </div>
+            {passwordErrors.confirm && <p style={errorStyle}>{passwordErrors.confirm}</p>}
+          </div>
 
           <div style={{ display: "flex", alignItems: "flex-start", gap: "0.625rem", background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: "0.5rem", padding: "0.75rem 1rem" }}>
             <svg width="14" height="14" fill="none" stroke="#64748b" viewBox="0 0 24 24" style={{ flexShrink: 0, marginTop: "0.125rem" }}>
@@ -419,7 +718,169 @@ export default function ProfileTab() {
         </form>
       </div>
 
-      <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+      {/* Verification Modal */}
+      {showVerificationModal && (
+        <div style={{
+          position: "fixed",
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          background: "rgba(0,0,0,0.5)",
+          backdropFilter: "blur(4px)",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          zIndex: 1000,
+        }}>
+          <div style={{
+            background: "#fff",
+            borderRadius: "1rem",
+            padding: "2rem",
+            maxWidth: "420px",
+            width: "90%",
+            boxShadow: "0 20px 25px -5px rgba(0,0,0,0.2)",
+            animation: "slideUp 0.3s ease-out",
+          }}>
+            <div style={{ textAlign: "center", marginBottom: "1.5rem" }}>
+              <div style={{
+                width: "48px",
+                height: "48px",
+                background: "#eef2ff",
+                borderRadius: "9999px",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                margin: "0 auto 1rem",
+              }}>
+                <svg width="24" height="24" fill="none" stroke="#003366" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                </svg>
+              </div>
+              <h3 style={{ margin: "0 0 0.5rem", fontSize: "1.25rem", fontWeight: 600, color: "#1e293b" }}>
+                Email Verification Required
+              </h3>
+              <p style={{ color: "#64748b", fontSize: "0.875rem", margin: 0 }}>
+                We've sent a 6-digit verification code to
+              </p>
+              <p style={{ color: "#003366", fontWeight: 500, fontSize: "0.875rem", marginTop: "0.25rem" }}>
+                {adminInfo.email}
+              </p>
+              <p style={{ color: "#64748b", fontSize: "0.75rem", marginTop: "0.5rem" }}>
+                Once verified, your email will be locked for security.
+              </p>
+            </div>
+
+            <div>
+              <label style={labelStyle}>Verification Code</label>
+              <input
+                type="text"
+                value={verificationCode}
+                onChange={e => setVerificationCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                placeholder="Enter 6-digit code"
+                style={{
+                  ...inputStyle,
+                  fontSize: "1.5rem",
+                  textAlign: "center",
+                  letterSpacing: "0.75rem",
+                  fontFamily: "monospace",
+                  fontWeight: 600,
+                  color: "black",
+                }}
+                maxLength={6}
+                autoFocus
+              />
+            </div>
+
+            {verificationMessage && (
+              <div style={{
+                marginTop: "1rem",
+                padding: "0.75rem",
+                borderRadius: "0.5rem",
+                background: verificationMessage.includes("✓") ? "#f0fdf4" : "#fef2f2",
+                border: verificationMessage.includes("✓") ? "1px solid #bbf7d0" : "1px solid #fecaca",
+                color: verificationMessage.includes("✓") ? "#166534" : "#991b1b",
+                fontSize: "0.875rem",
+                textAlign: "center",
+              }}>
+                {verificationMessage}
+              </div>
+            )}
+
+            <div style={{ display: "flex", gap: "1rem", marginTop: "1.5rem" }}>
+              <button
+                onClick={() => {
+                  setShowVerificationModal(false);
+                  setVerificationCode("");
+                  setVerificationMessage("");
+                  setGeneratedOtp(null);
+                }}
+                style={{
+                  flex: 1,
+                  padding: "0.625rem",
+                  background: "#f1f5f9",
+                  border: "1px solid #e2e8f0",
+                  borderRadius: "0.5rem",
+                  cursor: "pointer",
+                  fontWeight: 500,
+                  color: "#475569",
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={verifyEmail}
+                disabled={isVerifying || verificationCode.length !== 6}
+                style={{
+                  flex: 1,
+                  padding: "0.625rem",
+                  background: "#003366",
+                  color: "#fff",
+                  border: "none",
+                  borderRadius: "0.5rem",
+                  cursor: verificationCode.length === 6 ? "pointer" : "not-allowed",
+                  fontWeight: 500,
+                  opacity: verificationCode.length === 6 ? 1 : 0.5,
+                }}
+              >
+                {isVerifying ? "Verifying..." : "Verify"}
+              </button>
+            </div>
+
+            <div style={{ marginTop: "1rem", textAlign: "center" }}>
+              <button
+                onClick={resendVerificationCode}
+                disabled={resendTimer > 0 || isSendingOtp}
+                style={{
+                  background: "none",
+                  border: "none",
+                  color: "#003366",
+                  cursor: (resendTimer > 0 || isSendingOtp) ? "not-allowed" : "pointer",
+                  fontSize: "0.875rem",
+                  fontWeight: 500,
+                  opacity: (resendTimer > 0 || isSendingOtp) ? 0.5 : 1,
+                }}
+              >
+                {isSendingOtp ? "Sending..." : (resendTimer > 0 ? `Resend code in ${resendTimer}s` : "Resend verification code")}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <style>{`
+        @keyframes spin { to { transform: rotate(360deg); } }
+        @keyframes slideUp {
+          from {
+            opacity: 0;
+            transform: translateY(20px);
+          }
+          to {
+            opacity: 1;
+            transform: translateY(0);
+          }
+        }
+      `}</style>
     </div>
   );
 }

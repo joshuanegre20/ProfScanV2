@@ -61,6 +61,7 @@ export default function AddSubjectTab() {
   const [deleteProcessing, setDeleteProcessing] = useState<number | null>(null);
   const [departments, setDepartments] = useState<Department[]>([]);
   const [loadingDepartments, setLoadingDepartments] = useState(false);
+  const [selectedDepartmentFilter, setSelectedDepartmentFilter] = useState<string>("all");
 
   useEffect(() => {
     fetchSubjects();
@@ -177,25 +178,30 @@ export default function AddSubjectTab() {
   };
 
   const handleDeleteSubject = async (id: number) => {
-  if (!confirm("Are you sure you want to delete this subject?")) return;
+    if (!confirm("Are you sure you want to delete this subject?")) return;
 
-  setDeleteProcessing(id);
-  
-  try {
-    await api.delete(`/admin/subjects/${id}`);
-    setSavedSubjects(prev => prev.filter(s => s.id !== id));
-  } catch (err: any) {
-    console.error("Failed to delete subject:", err);
+    setDeleteProcessing(id);
+    
+    try {
+      await api.delete(`/admin/subjects/${id}`);
+      setSavedSubjects(prev => prev.filter(s => s.id !== id));
+    } catch (err: any) {
+      console.error("Failed to delete subject:", err);
 
-    if (err.response?.data) {
-      alert(err.response.data.error || err.response.data.message);
-    } else {
-      alert("Server error. Try again.");
+      if (err.response?.data) {
+        alert(err.response.data.error || err.response.data.message);
+      } else {
+        alert("Server error. Try again.");
+      }
+    } finally {
+      setDeleteProcessing(null);
     }
-  } finally {
-    setDeleteProcessing(null);
-  }
-};
+  };
+
+  // Filter subjects based on selected department
+  const filteredSubjects = selectedDepartmentFilter === "all" 
+    ? savedSubjects 
+    : savedSubjects.filter(subject => subject.department === selectedDepartmentFilter);
 
   if (success !== null) {
     return (
@@ -397,22 +403,77 @@ export default function AddSubjectTab() {
 
       {/* Subjects List Section */}
       <div style={glassCardStyle}>
-        <div style={{ padding: "1.25rem 1.5rem", borderBottom: "1px solid #e2e8f0", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-          <div>
-            <h2 style={{ fontSize: "1rem", fontWeight: 700, color: "#1e293b" }}>Existing Subjects</h2>
-            <p style={{ fontSize: "0.8rem", color: "#64748b", marginTop: "0.125rem" }}>
-              List of all subjects in the system
-            </p>
+        <div style={{ padding: "1.25rem 1.5rem", borderBottom: "1px solid #e2e8f0" }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "1rem" }}>
+            <div>
+              <h2 style={{ fontSize: "1rem", fontWeight: 700, color: "#1e293b" }}>Existing Subjects</h2>
+              <p style={{ fontSize: "0.8rem", color: "#64748b", marginTop: "0.125rem" }}>
+                List of all subjects in the system
+              </p>
+            </div>
+            <button
+              onClick={fetchSubjects}
+              style={{ padding: "0.375rem 0.75rem", border: "1px solid #e2e8f0", borderRadius: "0.5rem", background: "#fff", fontSize: "0.75rem", color: "#64748b", cursor: "pointer", display: "flex", alignItems: "center", gap: "0.25rem" }}
+            >
+              <svg width="12" height="12" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+              </svg>
+              Refresh
+            </button>
           </div>
-          <button
-            onClick={fetchSubjects}
-            style={{ padding: "0.375rem 0.75rem", border: "1px solid #e2e8f0", borderRadius: "0.5rem", background: "#fff", fontSize: "0.75rem", color: "#64748b", cursor: "pointer", display: "flex", alignItems: "center", gap: "0.25rem" }}
-          >
-            <svg width="12" height="12" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-            </svg>
-            Refresh
-          </button>
+          
+          {/* Department Filter Dropdown */}
+          <div style={{ display: "flex", alignItems: "center", gap: "0.75rem", flexWrap: "wrap" }}>
+            <label style={{ fontSize: "0.75rem", fontWeight: 600, color: "#475569" }}>Filter by Department:</label>
+            <select
+              value={selectedDepartmentFilter}
+              onChange={(e) => setSelectedDepartmentFilter(e.target.value)}
+              style={{
+                padding: "0.375rem 0.75rem",
+                border: "1px solid #e2e8f0",
+                borderRadius: "0.5rem",
+                fontSize: "0.875rem",
+                color: "#1e293b",
+                background: "#fff",
+                cursor: "pointer",
+                outline: "none",
+                minWidth: "200px",
+              }}
+            >
+              <option value="all">All Departments ({savedSubjects.length})</option>
+              {departments.map(dept => {
+                const count = savedSubjects.filter(s => s.department === dept.degree_program).length;
+                return (
+                  <option key={dept.id} value={dept.degree_program}>
+                    {dept.degree_program} ({count})
+                  </option>
+                );
+              })}
+            </select>
+            
+            {selectedDepartmentFilter !== "all" && (
+              <button
+                onClick={() => setSelectedDepartmentFilter("all")}
+                style={{
+                  padding: "0.375rem 0.75rem",
+                  border: "1px solid #e2e8f0",
+                  borderRadius: "0.5rem",
+                  background: "#f8fafc",
+                  fontSize: "0.75rem",
+                  color: "#64748b",
+                  cursor: "pointer",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "0.25rem",
+                }}
+              >
+                <svg width="12" height="12" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+                Clear Filter
+              </button>
+            )}
+          </div>
         </div>
 
         {loadingSubjects ? (
@@ -420,13 +481,21 @@ export default function AddSubjectTab() {
             <div style={{ width: "2rem", height: "2rem", border: "2px solid #e2e8f0", borderTopColor: "#003366", borderRadius: "50%", animation: "spin 0.7s linear infinite", margin: "0 auto 1rem" }} />
             <p style={{ color: "#64748b", fontSize: "0.875rem" }}>Loading subjects...</p>
           </div>
-        ) : !savedSubjects || savedSubjects.length === 0 ? (
+        ) : !filteredSubjects || filteredSubjects.length === 0 ? (
           <div style={{ padding: "3rem", textAlign: "center" }}>
             <svg width="48" height="48" fill="none" stroke="#94a3b8" viewBox="0 0 24 24" style={{ margin: "0 auto 1rem" }}>
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
             </svg>
-            <p style={{ color: "#64748b", fontSize: "0.875rem" }}>No subjects found</p>
-            <p style={{ color: "#94a3b8", fontSize: "0.75rem", marginTop: "0.25rem" }}>Add subjects using the form above</p>
+            <p style={{ color: "#64748b", fontSize: "0.875rem" }}>
+              {selectedDepartmentFilter === "all" 
+                ? "No subjects found" 
+                : `No subjects found for ${selectedDepartmentFilter}`}
+            </p>
+            <p style={{ color: "#94a3b8", fontSize: "0.75rem", marginTop: "0.25rem" }}>
+              {selectedDepartmentFilter === "all" 
+                ? "Add subjects using the form above" 
+                : "Try selecting a different department or add new subjects"}
+            </p>
           </div>
         ) : (
           <div style={{ overflowX: "auto" }}>
@@ -439,10 +508,10 @@ export default function AddSubjectTab() {
                   <th style={{ padding: "0.75rem 1.5rem", textAlign: "left", fontWeight: 600, color: "#475569", fontSize: "0.75rem", textTransform: "uppercase", letterSpacing: "0.05em" }}>Department</th>
                   <th style={{ padding: "0.75rem 1.5rem", textAlign: "left", fontWeight: 600, color: "#475569", fontSize: "0.75rem", textTransform: "uppercase", letterSpacing: "0.05em" }}>Created</th>
                   <th style={{ padding: "0.75rem 1.5rem", textAlign: "right", fontWeight: 600, color: "#475569", fontSize: "0.75rem", textTransform: "uppercase", letterSpacing: "0.05em" }}>Actions</th>
-                 </tr>
+                </tr>
               </thead>
               <tbody>
-                {savedSubjects.map((subject, idx) => {
+                {filteredSubjects.map((subject, idx) => {
                   const dept = departments.find(d => d.degree_program === subject.department);
                   return (
                     <tr key={subject.id} style={{ borderBottom: "1px solid #e2e8f0", background: idx % 2 === 0 ? "#fff" : "#fafafa" }}>
@@ -496,7 +565,7 @@ export default function AddSubjectTab() {
             </table>
             
             <div style={{ padding: "0.75rem 1.5rem", borderTop: "1px solid #e2e8f0", background: "#fafafa", display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: "0.75rem", color: "#64748b" }}>
-              <span>Total subjects: <strong>{savedSubjects.length}</strong></span>
+              <span>Showing {filteredSubjects.length} of {savedSubjects.length} subjects</span>
               <span>Last updated: {new Date().toLocaleTimeString()}</span>
             </div>
           </div>

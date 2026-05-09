@@ -10,145 +10,103 @@ app.use(cors({ origin: "*" }));
 app.use(express.json());
 
 const io = new Server(server, {
-  cors: { origin: "*", methods: ["GET", "POST"] },
+  cors: { 
+    origin: ["https://web.captoneproject101.online", "https://socket.captoneproject101.online", "http://localhost:5173", "http://localhost:3000"],
+    methods: ["GET", "POST"],
+    credentials: true
+  },
+  pingTimeout: 60000,
+  pingInterval: 25000,
+  transports: ['websocket', 'polling'],
+  allowEIO3: true,
+  allowRequest: (req, callback) => {
+    // Allow all requests for WebSocket
+    callback(null, true);
+  }
 });
 
-// ── Track connected clients ───────────────────────────────────────
-let clients = 0;
+// Track connected clients
+let clients = new Map();
 
 io.on("connection", (socket) => {
-  clients++;
-  console.log(`✅ Connected: ${socket.id} | Total: ${clients}`);
+  const connectTime = new Date();
+  clients.set(socket.id, { connectTime, rooms: [] });
+  console.log(`✅ Connected: ${socket.id} | Total: ${clients.size}`);
 
-  // Client joins a room based on their role
-  socket.on("join-admin",   ()         => { socket.join("admin");           console.log(`🔑 Admin joined`); });
-  socket.on("join-staff",   ()         => { socket.join("staff");           console.log(`👤 Staff joined`); });
-  socket.on("join-device",  (deviceId) => { socket.join(`device-${deviceId}`); console.log(`📡 Device ${deviceId} joined`); });
+  // Send immediate confirmation
+  socket.emit("connected", { message: "Connected!", timestamp: Date.now() });
 
-  socket.on("disconnect", () => {
-    clients--;
-    console.log(`❌ Disconnected: ${socket.id} | Total: ${clients}`);
+  // Handle ping/pong
+  socket.on("ping", (callback) => {
+    if (callback && typeof callback === 'function') {
+      callback({ pong: Date.now() });
+    } else {
+      socket.emit("pong", { pong: Date.now() });
+    }
+  });
+
+  // Room joining
+  socket.on("join-admin", () => { 
+    socket.join("admin"); 
+    const client = clients.get(socket.id);
+    if (client) client.rooms.push("admin");
+    console.log(`🔑 Admin joined (${socket.id})`);
+    socket.emit("room-joined", { room: "admin" });
+  });
+  
+  socket.on("join-staff", () => { 
+    socket.join("staff"); 
+    const client = clients.get(socket.id);
+    if (client) client.rooms.push("staff");
+    console.log(`👤 Staff joined (${socket.id})`);
+    socket.emit("room-joined", { room: "staff" });
+  });
+  
+  socket.on("join-device", (deviceId) => { 
+    const room = `device-${deviceId}`;
+    socket.join(room); 
+    const client = clients.get(socket.id);
+    if (client) client.rooms.push(room);
+    console.log(`📡 Device ${deviceId} joined (${socket.id})`);
+    socket.emit("room-joined", { room: room });
+  });
+
+  socket.on("disconnect", (reason) => {
+    clients.delete(socket.id);
+    console.log(`❌ Disconnected: ${socket.id} | Reason: ${reason} | Total: ${clients.size}`);
   });
 });
 
-// ── Endpoints called by Laravel ───────────────────────────────────
-
-// POST /emit/scan — called when ESP32 scans a QR
-app.post("/emit/scan", (req, res) => {
-  const data = req.body;
-  console.log("📱 Scan:", data.name, "|", data.status);
-
-  io.to("admin").emit("scan", data);
-  io.to("staff").emit("scan", data);
-  if (data.device_id) io.to(`device-${data.device_id}`).emit("scan", data);
-
-  res.json({ success: true });
+app.get("/health", (req, res) => {
+  res.json({ 
+    status: "ok", 
+    clients: clients.size,
+    uptime: process.uptime(),
+    timestamp: new Date().toISOString()
+  });
 });
 
-// POST /emit/schedule-update — called when a schedule status changes
-app.post("/emit/schedule-update", (req, res) => {
-  const data = req.body;
-  console.log("📅 Schedule update:", data.schedule_id, "→", data.status);
-
-  io.to("admin").emit("schedule-update", data);
-  io.to("staff").emit("schedule-update", data);
-
-  res.json({ success: true });
-});
-
-// POST /emit/attendance-update — called when absent/excused
-app.post("/emit/attendance-update", (req, res) => {
-  const data = req.body;
-  console.log("📋 Attendance update:", data.type);
-
-  io.to("admin").emit("attendance-update", data);
-  io.to("staff").emit("attendance-update", data);
-
-  res.json({ success: true });
-});
-
-// POST /emit/event-update — called when event is created/updated
-app.post("/emit/event-update", (req, res) => {
-  const data = req.body;
-  console.log("🗓️ Event update:", data.title);
-
-  io.to("admin").emit("event-update", data);
-  io.to("staff").emit("event-update", data);
-
-  res.json({ success: true });
-});
-
-// POST /emit/activity-update — called when any activity is created
-app.post("/emit/activity-update", (req, res) => {
-  const data = req.body;
-  console.log("📋 Activity update:", data.type, "|", data.name);
-
-  io.to("admin").emit("activity-update", data);
-  io.to("staff").emit("activity-update", data);
-
-  res.json({ success: true });
-});
-
-// POST /emit/stats-update — called when dashboard stats change
-app.post("/emit/stats-update", (req, res) => {
-  const data = req.body;
-  console.log("📊 Stats update:", data.type);
-
-  io.to("admin").emit("stats-update", data);
-
-  res.json({ success: true });
-});
-
-// POST /emit/instructor-update — called when instructor is created/updated/deleted
-app.post("/emit/instructor-update", (req, res) => {
-  const data = req.body;
-  console.log("👨‍🏫 Instructor update:", data.action, "|", data.instructor_id);
-
-  io.to("admin").emit("instructor-update", data);
-  io.to("staff").emit("instructor-update", data);
-
-  res.json({ success: true });
-});
-
-// POST /emit/staff-update — called when staff is created/updated/deleted
-app.post("/emit/staff-update", (req, res) => {
-  const data = req.body;
-  console.log("👥 Staff update:", data.action);
-
-  io.to("admin").emit("staff-update", data);
-
-  res.json({ success: true });
-});
-
-// POST /emit/device-update — called when device status/config changes
-app.post("/emit/device-update", (req, res) => {
-  const data = req.body;
-  console.log("🔌 Device update:", data.device_id, "→", data.status);
-
-  io.to("admin").emit("device-update", data);
-  io.to("staff").emit("device-update", data);
-  if (data.device_id) io.to(`device-${data.device_id}`).emit("device-update", data);
-
-  res.json({ success: true });
-});
-
-// POST /emit/logs-update — called when attendance logs are modified
-app.post("/emit/logs-update", (req, res) => {
-  const data = req.body;
-  console.log("📝 Logs update:", data.instructor_id, "→", data.status);
-
-  io.to("admin").emit("logs-update", data);
-  io.to("staff").emit("logs-update", data);
-
-  res.json({ success: true });
-});
-
-// GET /status — health check
 app.get("/status", (req, res) => {
-  res.json({ status: "ok", clients });
+  const clientList = Array.from(clients.entries()).map(([id, data]) => ({
+    id: id.substring(0, 8),
+    rooms: data.rooms,
+    connectedFor: Math.floor((Date.now() - data.connectTime) / 1000) + 's'
+  }));
+  res.json({ 
+    clients: clients.size, 
+    connections: clientList,
+    memory: process.memoryUsage(),
+    uptime: process.uptime()
+  });
 });
 
 const PORT = process.env.PORT || 3001;
 server.listen(PORT, "0.0.0.0", () => {
   console.log(`🚀 Socket.io running on http://0.0.0.0:${PORT}`);
+  console.log(`   Transports: websocket, polling`);
+});
+
+// Handle server errors
+server.on('error', (error) => {
+  console.error('Server error:', error);
 });

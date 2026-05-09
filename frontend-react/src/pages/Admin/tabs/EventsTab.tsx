@@ -19,7 +19,7 @@ interface Event {
   start: string;
   ends?: string;
   location: string;
-  type: "Academic" | "Administrative" | "Others";
+  type: "Academic" | "Administrative" | "Training" | "Social";
   status: "Upcoming" | "Ongoing" | "Completed";
   attendees: number;
 }
@@ -77,6 +77,18 @@ const glassCardStyle = {
   transition: "transform 0.2s, box-shadow 0.2s",
 };
 
+// Compare function for sorting events by date and time
+const compareEventsByDateTime = (a: Event, b: Event): number => {
+  // First compare by start date
+  const dateCompare = a.date.localeCompare(b.date);
+  if (dateCompare !== 0) return dateCompare;
+  
+  // If same date, compare by start time
+  const timeA = a.start || "00:00";
+  const timeB = b.start || "00:00";
+  return timeA.localeCompare(timeB);
+};
+
 const calculateStatus = (startDate: string, endDate: string): "Upcoming" | "Ongoing" | "Completed" => {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
@@ -107,6 +119,11 @@ export default function EventsTab() {
   const [typeFilter, setTypeFilter] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
   const [locationFilter, setLocationFilter] = useState("");
+  const [expandedGroups, setExpandedGroups] = useState({
+    upcoming: true,
+    ongoing: true,
+    completed: false
+  });
   const today = new Date().toISOString().split("T")[0];
 
   const fetchEvents = async () => {
@@ -117,7 +134,9 @@ export default function EventsTab() {
         ...event,
         status: calculateStatus(event.date, event.date_ends)
       }));
-      setEvents(eventsWithUpdatedStatus);
+      // Sort events by date and time using the compare function
+      const sortedEvents = [...eventsWithUpdatedStatus].sort(compareEventsByDateTime);
+      setEvents(sortedEvents);
     } catch (err) {
       console.error("Failed to fetch events:", err);
     } finally {
@@ -134,7 +153,6 @@ export default function EventsTab() {
       } else if (response.data?.data && Array.isArray(response.data.data)) {
         devicesData = response.data.data;
       }
-      // Only show paired devices
       setDevices(devicesData.filter(d => d.paired));
     } catch (err) {
       console.error("Failed to fetch devices:", err);
@@ -225,6 +243,10 @@ export default function EventsTab() {
     }
   };
 
+  const toggleGroup = (group: keyof typeof expandedGroups) => {
+    setExpandedGroups(prev => ({ ...prev, [group]: !prev[group] }));
+  };
+
   // Get unique locations for filter
   const uniqueLocations = [...new Set(events.map(e => e.location).filter(Boolean))];
 
@@ -239,6 +261,11 @@ export default function EventsTab() {
     
     return matchSearch && matchType && matchStatus && matchLocation;
   });
+
+  // Group filtered events by status with sorting
+  const upcoming = filtered.filter(e => e.status === "Upcoming").sort(compareEventsByDateTime);
+  const ongoing = filtered.filter(e => e.status === "Ongoing").sort(compareEventsByDateTime);
+  const completed = filtered.filter(e => e.status === "Completed").sort(compareEventsByDateTime);
 
   const inputStyle: React.CSSProperties = { 
     padding: "0.625rem 1rem", 
@@ -263,6 +290,17 @@ export default function EventsTab() {
     letterSpacing: "0.05em", 
     marginBottom: "0.375rem" 
   };
+
+  const sectionHeaderStyle = (color: string, bgColor: string) => ({
+    padding: "0.875rem 1.25rem",
+    background: bgColor,
+    borderBottom: "1px solid #e2e8f0",
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+    cursor: "pointer",
+    transition: "background 0.2s"
+  });
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "1.25rem" }}>
@@ -343,67 +381,6 @@ export default function EventsTab() {
         </div>
       )}
 
-      {!loading && filtered.length > 0 && (
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))", gap: "1.25rem" }}>
-          {filtered.map(event => {
-            return (
-              <div 
-                key={event.id} 
-                style={glassCardStyle}
-                onMouseEnter={e => {
-                  e.currentTarget.style.transform = "translateY(-2px)";
-                  e.currentTarget.style.boxShadow = "0 8px 25px -5px rgba(0,0,0,0.1)";
-                }}
-                onMouseLeave={e => {
-                  e.currentTarget.style.transform = "translateY(0)";
-                  e.currentTarget.style.boxShadow = "0 1px 3px rgba(0,0,0,0.08)";
-                }}
-              >
-                <div style={{ background: typeGradients[event.type], padding: "1rem" }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "0.5rem" }}>
-                    <span style={{ fontSize: "0.7rem", background: "rgba(255,255,255,0.2)", color: "#fff", padding: "0.125rem 0.625rem", borderRadius: "9999px", fontWeight: 500 }}>
-                      {event.type}
-                    </span>
-                    <span style={{ fontSize: "0.7rem", padding: "0.125rem 0.625rem", borderRadius: "9999px", fontWeight: 500, background: statusColors[event.status]?.bg, color: statusColors[event.status]?.color }}>
-                      {event.status}
-                    </span>
-                  </div>
-                  <h3 style={{ color: "#fff", fontWeight: 600, fontSize: "0.95rem", marginBottom: "0.25rem" }}>{event.title}</h3>
-                  <span style={{ fontSize: "0.65rem", background: "rgba(255,255,255,0.2)", color: "#ffd700", padding: "0.125rem 0.5rem", borderRadius: "9999px", marginTop: "0.25rem", display: "inline-block" }}>
-                    📍 {event.location}
-                  </span>
-                </div>
-                <div style={{ padding: "1rem" }}>
-                  <p style={{ fontSize: "0.8rem", color: "#475569", marginBottom: "0.75rem", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>
-                    {event.description}
-                  </p>
-                  <hr style={{ border: "none", borderTop: "1px solid #e2e8f0", marginBottom: "0.75rem" }} />
-                  <div style={{ fontSize: "0.8rem", color: "#64748b", display: "flex", flexDirection: "column", gap: "0.25rem" }}>
-                    <p>📅 {new Date(event.date).toLocaleDateString()} – {new Date(event.date_ends).toLocaleDateString()}</p>
-                    <p>🕐 {event.start}{event.ends ? ` – ${event.ends}` : ""}</p>
-                    <p>👥 {event.attendees} attendees</p>
-                  </div>
-                  <div style={{ display: "flex", gap: "0.75rem", marginTop: "0.75rem" }}>
-                    <button onClick={() => handleEdit(event)} style={{ background: "none", border: "none", cursor: "pointer", color: "#003366", fontWeight: 500, fontSize: "0.875rem", transition: "color 0.2s" }}
-                      onMouseEnter={e => (e.currentTarget.style.color = "#004c99")}
-                      onMouseLeave={e => (e.currentTarget.style.color = "#003366")}
-                    >
-                      Edit
-                    </button>
-                    <button onClick={() => handleDelete(event.id)} style={{ background: "none", border: "none", cursor: "pointer", color: "#ef4444", fontWeight: 500, fontSize: "0.875rem", transition: "color 0.2s" }}
-                      onMouseEnter={e => (e.currentTarget.style.color = "#dc2626")}
-                      onMouseLeave={e => (e.currentTarget.style.color = "#ef4444")}
-                    >
-                      Delete
-                    </button>
-                  </div>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      )}
-
       {!loading && filtered.length === 0 && (
         <div style={{ textAlign: "center", padding: "4rem", background: "#fff", borderRadius: "0.75rem", boxShadow: "0 1px 3px rgba(0,0,0,0.08)", border: "1px solid #e2e8f0" }}>
           <svg width="48" height="48" fill="none" stroke="#94a3b8" viewBox="0 0 24 24" style={{ margin: "0 auto 0.75rem" }}>
@@ -414,6 +391,123 @@ export default function EventsTab() {
             Create your first event
           </button>
         </div>
+      )}
+
+      {!loading && filtered.length > 0 && (
+        <>
+          {/* Upcoming Events Section */}
+          {upcoming.length > 0 && (
+            <div style={glassCardStyle}>
+              <div 
+                style={sectionHeaderStyle("#15803d", "#dcfce7")}
+                onClick={() => toggleGroup("upcoming")}
+                onMouseEnter={e => (e.currentTarget.style.opacity = "0.9")}
+                onMouseLeave={e => (e.currentTarget.style.opacity = "1")}
+              >
+                <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                  <svg width="18" height="18" fill="none" stroke="#15803d" viewBox="0 0 24 24">
+                    <circle cx="12" cy="12" r="10" strokeWidth={2} />
+                    <polyline points="12 6 12 12 16 14" strokeWidth={2} />
+                  </svg>
+                  <span style={{ fontWeight: 600, fontSize: "0.875rem", color: "#15803d" }}>Upcoming Events</span>
+                  <span style={{ background: "#15803d", color: "#fff", borderRadius: "999px", padding: "0.125rem 0.5rem", fontSize: "0.7rem", fontWeight: 600 }}>
+                    {upcoming.length}
+                  </span>
+                </div>
+                <svg 
+                  width="18" 
+                  height="18" 
+                  fill="none" 
+                  stroke="#15803d" 
+                  viewBox="0 0 24 24"
+                  style={{ transform: expandedGroups.upcoming ? "rotate(180deg)" : "rotate(0deg)", transition: "transform 0.2s" }}
+                >
+                  <polyline points="6 9 12 15 18 9" strokeWidth={2} />
+                </svg>
+              </div>
+              {expandedGroups.upcoming && (
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))", gap: "1.25rem", padding: "1.25rem" }}>
+                  {upcoming.map(event => renderEventCard(event, handleEdit, handleDelete))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Ongoing Events Section */}
+          {ongoing.length > 0 && (
+            <div style={glassCardStyle}>
+              <div 
+                style={sectionHeaderStyle("#a16207", "#fef9c3")}
+                onClick={() => toggleGroup("ongoing")}
+                onMouseEnter={e => (e.currentTarget.style.opacity = "0.9")}
+                onMouseLeave={e => (e.currentTarget.style.opacity = "1")}
+              >
+                <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                  <svg width="18" height="18" fill="none" stroke="#a16207" viewBox="0 0 24 24">
+                    <circle cx="12" cy="12" r="10" strokeWidth={2} />
+                    <path strokeLinecap="round" strokeWidth={2} d="M12 8v4l3 3" />
+                  </svg>
+                  <span style={{ fontWeight: 600, fontSize: "0.875rem", color: "#a16207" }}>Ongoing Events</span>
+                  <span style={{ background: "#a16207", color: "#fff", borderRadius: "999px", padding: "0.125rem 0.5rem", fontSize: "0.7rem", fontWeight: 600 }}>
+                    {ongoing.length}
+                  </span>
+                </div>
+                <svg 
+                  width="18" 
+                  height="18" 
+                  fill="none" 
+                  stroke="#a16207" 
+                  viewBox="0 0 24 24"
+                  style={{ transform: expandedGroups.ongoing ? "rotate(180deg)" : "rotate(0deg)", transition: "transform 0.2s" }}
+                >
+                  <polyline points="6 9 12 15 18 9" strokeWidth={2} />
+                </svg>
+              </div>
+              {expandedGroups.ongoing && (
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))", gap: "1.25rem", padding: "1.25rem" }}>
+                  {ongoing.map(event => renderEventCard(event, handleEdit, handleDelete))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Completed Events Section */}
+          {completed.length > 0 && (
+            <div style={glassCardStyle}>
+              <div 
+                style={sectionHeaderStyle("#475569", "#f1f5f9")}
+                onClick={() => toggleGroup("completed")}
+                onMouseEnter={e => (e.currentTarget.style.opacity = "0.9")}
+                onMouseLeave={e => (e.currentTarget.style.opacity = "1")}
+              >
+                <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                  <svg width="18" height="18" fill="none" stroke="#475569" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                  </svg>
+                  <span style={{ fontWeight: 600, fontSize: "0.875rem", color: "#475569" }}>Completed Events</span>
+                  <span style={{ background: "#475569", color: "#fff", borderRadius: "999px", padding: "0.125rem 0.5rem", fontSize: "0.7rem", fontWeight: 600 }}>
+                    {completed.length}
+                  </span>
+                </div>
+                <svg 
+                  width="18" 
+                  height="18" 
+                  fill="none" 
+                  stroke="#475569" 
+                  viewBox="0 0 24 24"
+                  style={{ transform: expandedGroups.completed ? "rotate(180deg)" : "rotate(0deg)", transition: "transform 0.2s" }}
+                >
+                  <polyline points="6 9 12 15 18 9" strokeWidth={2} />
+                </svg>
+              </div>
+              {expandedGroups.completed && (
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))", gap: "1.25rem", padding: "1.25rem" }}>
+                  {completed.map(event => renderEventCard(event, handleEdit, handleDelete))}
+                </div>
+              )}
+            </div>
+          )}
+        </>
       )}
 
       {/* Modal */}
@@ -502,7 +596,6 @@ export default function EventsTab() {
                   </div>
                 </div>
                 
-                {/* Location Dropdown from Devices */}
                 <div>
                   <label style={labelStyle}>Location *</label>
                   <select
@@ -512,9 +605,8 @@ export default function EventsTab() {
                     required
                   >
                     <option value="">Select a location</option>
-                    <option value="All">Select all</option>
+                    <option value="All">All Locations</option>
                     {devices.map(device => (
-
                       <option key={device.id} value={device.name}>
                         {device.name} {device.status === "online" ? "🟢" : "⚪"}
                       </option>
@@ -607,6 +699,68 @@ export default function EventsTab() {
       )}
 
       <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+    </div>
+  );
+}
+
+// Helper function to render event card
+function renderEventCard(
+  event: Event, 
+  onEdit: (event: Event) => void, 
+  onDelete: (id: number) => void
+) {
+  return (
+    <div 
+      key={event.id} 
+      style={glassCardStyle}
+      onMouseEnter={e => {
+        e.currentTarget.style.transform = "translateY(-2px)";
+        e.currentTarget.style.boxShadow = "0 8px 25px -5px rgba(0,0,0,0.1)";
+      }}
+      onMouseLeave={e => {
+        e.currentTarget.style.transform = "translateY(0)";
+        e.currentTarget.style.boxShadow = "0 1px 3px rgba(0,0,0,0.08)";
+      }}
+    >
+      <div style={{ background: typeGradients[event.type] || typeGradients.Academic, padding: "1rem" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "0.5rem" }}>
+          <span style={{ fontSize: "0.7rem", background: "rgba(255,255,255,0.2)", color: "#fff", padding: "0.125rem 0.625rem", borderRadius: "9999px", fontWeight: 500 }}>
+            {event.type}
+          </span>
+          <span style={{ fontSize: "0.7rem", padding: "0.125rem 0.625rem", borderRadius: "9999px", fontWeight: 500, background: statusColors[event.status]?.bg, color: statusColors[event.status]?.color }}>
+            {event.status}
+          </span>
+        </div>
+        <h3 style={{ color: "#fff", fontWeight: 600, fontSize: "0.95rem", marginBottom: "0.25rem" }}>{event.title}</h3>
+        <span style={{ fontSize: "0.65rem", background: "rgba(255,255,255,0.2)", color: "#ffd700", padding: "0.125rem 0.5rem", borderRadius: "9999px", marginTop: "0.25rem", display: "inline-block" }}>
+          📍 {event.location}
+        </span>
+      </div>
+      <div style={{ padding: "1rem" }}>
+        <p style={{ fontSize: "0.8rem", color: "#475569", marginBottom: "0.75rem", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>
+          {event.description}
+        </p>
+        <hr style={{ border: "none", borderTop: "1px solid #e2e8f0", marginBottom: "0.75rem" }} />
+        <div style={{ fontSize: "0.8rem", color: "#64748b", display: "flex", flexDirection: "column", gap: "0.25rem" }}>
+          <p>📅 {new Date(event.date).toLocaleDateString()} – {new Date(event.date_ends).toLocaleDateString()}</p>
+          <p>🕐 {event.start}{event.ends ? ` – ${event.ends}` : ""}</p>
+          <p>👥 {event.attendees} attendees</p>
+        </div>
+        <div style={{ display: "flex", gap: "0.75rem", marginTop: "0.75rem" }}>
+          <button onClick={() => onEdit(event)} style={{ background: "none", border: "none", cursor: "pointer", color: "#003366", fontWeight: 500, fontSize: "0.875rem", transition: "color 0.2s" }}
+            onMouseEnter={e => (e.currentTarget.style.color = "#004c99")}
+            onMouseLeave={e => (e.currentTarget.style.color = "#003366")}
+          >
+            Edit
+          </button>
+          <button onClick={() => onDelete(event.id)} style={{ background: "none", border: "none", cursor: "pointer", color: "#ef4444", fontWeight: 500, fontSize: "0.875rem", transition: "color 0.2s" }}
+            onMouseEnter={e => (e.currentTarget.style.color = "#dc2626")}
+            onMouseLeave={e => (e.currentTarget.style.color = "#ef4444")}
+          >
+            Delete
+          </button>
+        </div>
+      </div>
     </div>
   );
 }

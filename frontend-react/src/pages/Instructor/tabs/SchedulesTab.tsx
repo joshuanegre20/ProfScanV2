@@ -12,7 +12,7 @@ interface Schedule {
   end_time?: string;
   day: string;
   room: string;
-  status: "Upcoming" | "Ongoing" | "Present" | "Absent" | "Attended";
+  status: "Upcoming" | "Ongoing" | "Present" | "Late" | "Absent" | "Attended";
   block?: string;
 }
 
@@ -20,12 +20,13 @@ const statusColors: Record<string, { bg: string; color: string }> = {
   Upcoming: { bg: "#dbeafe", color: "#1d4ed8" },
   Ongoing:  { bg: "#fef9c3", color: "#a16207" },
   Present:  { bg: "#dcfce7", color: "#15803d" },
+  Late:     { bg: "#fed7aa", color: "#c2410c" },
   Absent:   { bg: "#fee2e2", color: "#dc2626" },
   Attended: { bg: "#f3e8ff", color: "#7e22ce" },
 };
 
 const statusEmoji: Record<string, string> = {
-  Upcoming: "🔵", Ongoing: "🟡", Present: "🟢", Absent: "🔴", Attended: "🟣",
+  Upcoming: "🔵", Ongoing: "🟡", Present: "🟢", Late: "⏱️", Absent: "🔴", Attended: "🟣",
 };
 
 const dayColors: Record<string, { bg: string; color: string }> = {
@@ -33,7 +34,6 @@ const dayColors: Record<string, { bg: string; color: string }> = {
   TTH:       { bg: "#f3e8ff", color: "#7e22ce" },
   SAT:       { bg: "#ffedd5", color: "#c2410c" },
   SUN:       { bg: "#fee2e2", color: "#dc2626" },
-  "SAT-SUN": { bg: "#fce7f3", color: "#be185d" },
 };
 
 const getTodayCode = () => {
@@ -63,17 +63,26 @@ const isTodaySchedule = (s: Schedule): boolean => {
   const d = new Date().getDay();
   const todayMap: Record<number, string[]> = {
     1: ["MWF"], 2: ["TTH"], 3: ["MWF"],
-    4: ["TTH"], 5: ["MWF"], 6: ["SAT", "SAT-SUN"], 0: ["SUN", "SAT-SUN"],
+    4: ["TTH"], 5: ["MWF"], 6: ["SAT"], 0: ["SUN"],
   };
   return todayMap[d]?.includes(s.day) ?? false;
 };
 
 const getDisplayStatus = (s: Schedule): Schedule["status"] => {
-  if (s.status === "Present" || s.status === "Attended" || s.status === "Absent") return s.status;
+  if (s.status === "Present" || s.status === "Attended" || s.status === "Absent" || s.status === "Late") return s.status;
   if (!isTodaySchedule(s)) return s.status;
   if ((s.status === "Upcoming" || s.status === "Ongoing") && isTimeUp(s.end_time)) return "Absent";
   if (s.status === "Upcoming" && isTimeStarted(s.time) && !isTimeUp(s.end_time)) return "Ongoing";
   return s.status;
+};
+
+// Helper to sort schedules by time
+const sortByTime = (a: Schedule, b: Schedule): number => {
+  const timeA = a.time.split(":").map(Number);
+  const timeB = b.time.split(":").map(Number);
+  const minutesA = timeA[0] * 60 + timeA[1];
+  const minutesB = timeB[0] * 60 + timeB[1];
+  return minutesA - minutesB;
 };
 
 export default function SchedulesTab() {
@@ -100,7 +109,12 @@ export default function SchedulesTab() {
     if (clear) reportedOngoing.current.clear();
     setLoading(true);
     api.get("/instructor/schedules")
-      .then(res => setSchedules(Array.isArray(res.data) ? res.data : res.data?.data ?? []))
+      .then(res => {
+        const data = Array.isArray(res.data) ? res.data : res.data?.data ?? [];
+        // Sort all schedules by time
+        const sortedData = [...data].sort(sortByTime);
+        setSchedules(sortedData);
+      })
       .catch(() => {})
       .finally(() => setLoading(false));
   };
@@ -128,19 +142,44 @@ export default function SchedulesTab() {
   }, [schedules, now]);
 
   const todayCode      = getTodayCode();
-  const todaySchedules = schedules.filter(s => s.day === todayCode || s.day === "SAT-SUN");
+  const todaySchedules = schedules.filter(s => s.day === todayCode).sort(sortByTime);
   const presentCount   = schedules.filter(s => s.status === "Present" || s.status === "Attended").length;
+
+  // Separate schedules into categories
+  const completedSchedules = schedules.filter(s => {
+    const displayStatus = getDisplayStatus(s);
+    return displayStatus === "Absent" || displayStatus === "Present" || displayStatus === "Attended" || displayStatus === "Late";
+  }).sort(sortByTime);
+
+  const upcomingSchedules = schedules.filter(s => {
+    const displayStatus = getDisplayStatus(s);
+    return displayStatus === "Upcoming" || displayStatus === "Ongoing";
+  }).sort(sortByTime);
 
   const filtered = schedules.filter(s => {
     const matchDay    = dayFilter    === "" || s.day    === dayFilter;
     const matchStatus = statusFilter === "" || getDisplayStatus(s) === statusFilter;
     return matchDay && matchStatus;
-  });
+  }).sort(sortByTime);
 
   const inputStyle: React.CSSProperties = {
     padding: "0.5rem 0.75rem", border: "1px solid #e2e8f0", borderRadius: "0.5rem",
     fontSize: "0.8rem", outline: "none", background: "#fff", color: "#374151",
   };
+
+  const sectionStyle = {
+    background: "#fff",
+    borderRadius: "0.75rem",
+    boxShadow: "0 1px 3px rgba(0,0,0,0.08)",
+    overflow: "hidden",
+    marginBottom: "1.5rem",
+  };
+
+  const sectionHeaderStyle = (color: string) => ({
+    padding: "1rem 1.25rem",
+    background: color,
+    borderBottom: "1px solid rgba(0,0,0,0.05)",
+  });
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "1.5rem" }}>
@@ -158,8 +197,9 @@ export default function SchedulesTab() {
         {[
           { label: "Total Classes", value: schedules.length, border: "#003366", icon: "📚" },
           { label: "Today", value: todaySchedules.length, border: "#f59e0b", icon: "📅" },
-          { label: "Present", value: presentCount, border: "#22c55e", icon: "✅" },
-          { label: "Upcoming", value: schedules.filter(s => s.status === "Upcoming").length, border: "#3b82f6", icon: "⏰" },
+          { label: "Present/Attended", value: presentCount, border: "#22c55e", icon: "✅" },
+          { label: "Upcoming", value: schedules.filter(s => getDisplayStatus(s) === "Upcoming" || getDisplayStatus(s) === "Ongoing").length, border: "#3b82f6", icon: "⏰" },
+          { label: "Absent/Late", value: schedules.filter(s => getDisplayStatus(s) === "Absent" || getDisplayStatus(s) === "Late").length, border: "#dc2626", icon: "❌" },
         ].map(stat => (
           <div key={stat.label} style={{ background: "#fff", borderRadius: "0.75rem", boxShadow: "0 1px 3px rgba(0,0,0,0.08)", padding: "1rem", borderBottom: `3px solid ${stat.border}` }}>
             <p style={{ fontSize: "0.75rem", color: "#6b7280", margin: 0 }}>{stat.icon} {stat.label}</p>
@@ -170,15 +210,17 @@ export default function SchedulesTab() {
 
       {/* Today's Classes */}
       {todaySchedules.length > 0 && (
-        <div style={{ background: "#fff", borderRadius: "0.75rem", boxShadow: "0 1px 3px rgba(0,0,0,0.08)", padding: "1.25rem" }}>
-          <h3 style={{ fontWeight: 600, color: "#1e293b", fontSize: "0.95rem", margin: "0 0 1rem", display: "flex", alignItems: "center", gap: "0.5rem" }}>
-            <span style={{ width: 8, height: 8, borderRadius: "50%", background: "#22c55e", display: "inline-block" }} />
-            Today's Classes
-            <span style={{ fontSize: "0.75rem", color: "#94a3b8", fontWeight: 400 }}>
-              {new Date().toLocaleDateString("en-PH", { weekday: "long", month: "long", day: "numeric" })}
-            </span>
-          </h3>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: "0.75rem" }}>
+        <div style={sectionStyle}>
+          <div style={sectionHeaderStyle("linear-gradient(135deg, #fef3c7, #fffbeb)")}>
+            <h3 style={{ fontWeight: 600, color: "#92400e", fontSize: "0.95rem", margin: 0, display: "flex", alignItems: "center", gap: "0.5rem" }}>
+              <span style={{ width: 8, height: 8, borderRadius: "50%", background: "#f59e0b", display: "inline-block" }} />
+              Today's Classes
+              <span style={{ fontSize: "0.75rem", color: "#b45309", fontWeight: 400 }}>
+                {new Date().toLocaleDateString("en-PH", { weekday: "long", month: "long", day: "numeric" })}
+              </span>
+            </h3>
+          </div>
+          <div style={{ padding: "1.25rem", display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))", gap: "0.75rem" }}>
             {todaySchedules.map(s => {
               const displayStatus = getDisplayStatus(s);
               return (
@@ -208,18 +250,135 @@ export default function SchedulesTab() {
         </div>
       )}
 
-      {/* All Schedules Table */}
-      <div style={{ background: "#fff", borderRadius: "0.75rem", boxShadow: "0 1px 3px rgba(0,0,0,0.08)", overflow: "hidden" }}>
-        <div style={{ padding: "1rem", borderBottom: "1px solid #f1f5f9", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "0.75rem" }}>
+      {/* Upcoming & Ongoing Schedules Section */}
+      {upcomingSchedules.length > 0 && (
+        <div style={sectionStyle}>
+          <div style={sectionHeaderStyle("linear-gradient(135deg, #dbeafe, #eff6ff)")}>
+            <h3 style={{ fontWeight: 600, color: "#1e40af", fontSize: "0.95rem", margin: 0, display: "flex", alignItems: "center", gap: "0.5rem" }}>
+              <span>⏰</span> Upcoming & Ongoing Classes
+              <span style={{ fontSize: "0.7rem", color: "#3b82f6", fontWeight: 400, marginLeft: "0.5rem" }}>
+                {upcomingSchedules.length} classes
+              </span>
+            </h3>
+          </div>
+          <div style={{ overflowX: "auto" }}>
+            <table style={{ width: "100%", fontSize: "0.875rem", borderCollapse: "collapse" }}>
+              <thead>
+                <tr style={{ background: "#f8fafc", borderBottom: "1px solid #e2e8f0" }}>
+                  {["Time", "Subject", "Code", "Room", "Block", "Day", "Status"].map(h => (
+                    <th key={h} style={{ padding: "0.875rem 1rem", textAlign: "left", fontSize: "0.7rem", fontWeight: 600, color: "#475569", textTransform: "uppercase", letterSpacing: "0.05em" }}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {upcomingSchedules.map(s => {
+                  const displayStatus = getDisplayStatus(s);
+                  return (
+                    <tr key={s.id} style={{ borderBottom: "1px solid #f1f5f9" }}>
+                      <td style={{ padding: "0.875rem 1rem", fontWeight: 500, color: "#1e293b", whiteSpace: "nowrap" }}>
+                        {s.time}{s.end_time ? ` – ${s.end_time}` : ""}
+                      </td>
+                      <td style={{ padding: "0.875rem 1rem", fontWeight: 500, color: "#1e293b" }}>{s.subject}</td>
+                      <td style={{ padding: "0.875rem 1rem", fontFamily: "monospace", fontSize: "0.75rem", color: "#64748b" }}>{s.subject_code}</td>
+                      <td style={{ padding: "0.875rem 1rem" }}>
+                        <span style={{ padding: "2px 8px", borderRadius: "999px", fontSize: "0.7rem", fontWeight: 600, background: "#e0e7ff", color: "#4338ca" }}>{s.room}</span>
+                      </td>
+                      <td style={{ padding: "0.875rem 1rem" }}>
+                        {s.block ? (
+                          <span style={{ padding: "2px 8px", borderRadius: "0.25rem", fontSize: "0.7rem", fontWeight: 600, background: "#e0e7ff", color: "#4338ca" }}>
+                            {s.block}
+                          </span>
+                        ) : "—"}
+                      </td>
+                      <td style={{ padding: "0.875rem 1rem" }}>
+                        <span style={{ padding: "2px 8px", borderRadius: "999px", fontSize: "0.7rem", fontWeight: 600, background: dayColors[s.day]?.bg, color: dayColors[s.day]?.color }}>{s.day}</span>
+                      </td>
+                      <td style={{ padding: "0.875rem 1rem" }}>
+                        <span style={{ padding: "2px 8px", borderRadius: "999px", fontSize: "0.7rem", fontWeight: 500, background: statusColors[displayStatus]?.bg, color: statusColors[displayStatus]?.color }}>
+                          {statusEmoji[displayStatus]} {displayStatus}
+                        </span>
+                      </td>
+                    </tr>
+                    
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* Completed Schedules Section (Present/Attended/Absent/Late) */}
+      {completedSchedules.length > 0 && (
+        <div style={sectionStyle}>
+          <div style={sectionHeaderStyle("linear-gradient(135deg, #f1f5f9, #f8fafc)")}>
+            <h3 style={{ fontWeight: 600, color: "#475569", fontSize: "0.95rem", margin: 0, display: "flex", alignItems: "center", gap: "0.5rem" }}>
+              <span>📋</span> Completed Classes
+              <span style={{ fontSize: "0.7rem", color: "#64748b", fontWeight: 400, marginLeft: "0.5rem" }}>
+                {completedSchedules.length} classes
+              </span>
+            </h3>
+          </div>
+          <div style={{ overflowX: "auto" }}>
+            <table style={{ width: "100%", fontSize: "0.875rem", borderCollapse: "collapse" }}>
+              <thead>
+                <tr style={{ background: "#f8fafc", borderBottom: "1px solid #e2e8f0" }}>
+                  {["Time", "Subject", "Code", "Room", "Block", "Day", "Status"].map(h => (
+                    <th key={h} style={{ padding: "0.875rem 1rem", textAlign: "left", fontSize: "0.7rem", fontWeight: 600, color: "#475569", textTransform: "uppercase", letterSpacing: "0.05em" }}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {completedSchedules.map(s => {
+                  const displayStatus = getDisplayStatus(s);
+                  const isAbsentOrLate = displayStatus === "Absent" || displayStatus === "Late";
+                  const isPresent = displayStatus === "Present" || displayStatus === "Attended";
+                  return (
+                    <tr key={s.id} style={{ borderBottom: "1px solid #f1f5f9", background: isAbsentOrLate ? "#fef2f2" : isPresent ? "#f0fdf4" : "transparent" }}>
+                      <td style={{ padding: "0.875rem 1rem", fontWeight: 500, color: "#1e293b", whiteSpace: "nowrap" }}>
+                        {s.time}{s.end_time ? ` – ${s.end_time}` : ""}
+                      </td>
+                      <td style={{ padding: "0.875rem 1rem", fontWeight: 500, color: "#1e293b" }}>{s.subject}</td>
+                      <td style={{ padding: "0.875rem 1rem", fontFamily: "monospace", fontSize: "0.75rem", color: "#64748b" }}>{s.subject_code}</td>
+                      <td style={{ padding: "0.875rem 1rem" }}>
+                        <span style={{ padding: "2px 8px", borderRadius: "999px", fontSize: "0.7rem", fontWeight: 600, background: "#e0e7ff", color: "#4338ca" }}>{s.room}</span>
+                      </td>
+                      <td style={{ padding: "0.875rem 1rem" }}>
+                        {s.block ? (
+                          <span style={{ padding: "2px 8px", borderRadius: "0.25rem", fontSize: "0.7rem", fontWeight: 600, background: "#e0e7ff", color: "#4338ca" }}>
+                            {s.block}
+                          </span>
+                        ) : "—"}
+                      </td>
+                      <td style={{ padding: "0.875rem 1rem" }}>
+                        <span style={{ padding: "2px 8px", borderRadius: "999px", fontSize: "0.7rem", fontWeight: 600, background: dayColors[s.day]?.bg, color: dayColors[s.day]?.color }}>{s.day}</span>
+                      </td>
+                      <td style={{ padding: "0.875rem 1rem" }}>
+                        <span style={{ padding: "2px 8px", borderRadius: "999px", fontSize: "0.7rem", fontWeight: 500, background: statusColors[displayStatus]?.bg, color: statusColors[displayStatus]?.color }}>
+                          {statusEmoji[displayStatus]} {displayStatus}
+                        </span>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* Filters and All Schedules (when filters are applied) */}
+      <div style={sectionStyle}>
+        <div style={{ padding: "1rem", borderBottom: "1px solid #f1f5f9", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "0.75rem", background: "#f8fafc" }}>
           <h3 style={{ fontWeight: 600, color: "#1e293b", fontSize: "0.95rem", margin: 0 }}>All Schedules</h3>
           <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
             <select value={dayFilter} onChange={e => setDayFilter(e.target.value)} style={inputStyle}>
               <option value="">All Days</option>
-              {["MWF", "TTH", "SAT", "SUN", "SAT-SUN"].map(d => <option key={d}>{d}</option>)}
+              {["MWF", "TTH", "SAT", "SUN"].map(d => <option key={d}>{d}</option>)}
             </select>
             <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)} style={inputStyle}>
               <option value="">All Status</option>
-              {["Upcoming", "Ongoing", "Present", "Absent", "Attended"].map(s => <option key={s}>{s}</option>)}
+              {["Upcoming", "Ongoing", "Present", "Late", "Absent", "Attended"].map(s => <option key={s}>{s}</option>)}
             </select>
             <button onClick={() => fetchSchedules(true)} style={{ ...inputStyle, background: "#eef2ff", color: "#003366", border: "1px solid #cbd5e1", display: "flex", alignItems: "center", gap: "0.3rem", cursor: "pointer" }}>
               <svg width="12" height="12" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -242,7 +401,7 @@ export default function SchedulesTab() {
             <table style={{ width: "100%", fontSize: "0.875rem", borderCollapse: "collapse" }}>
               <thead>
                 <tr style={{ background: "#f8fafc", borderBottom: "1px solid #e2e8f0" }}>
-                  {["Subject", "Code", "Room", "Block", "Time", "Day", "Status"].map(h => (
+                  {["Time", "Subject", "Code", "Room", "Block", "Day", "Status"].map(h => (
                     <th key={h} style={{ padding: "0.875rem 1rem", textAlign: "left", fontSize: "0.7rem", fontWeight: 600, color: "#475569", textTransform: "uppercase", letterSpacing: "0.05em" }}>{h}</th>
                   ))}
                 </tr>
@@ -252,6 +411,9 @@ export default function SchedulesTab() {
                   const displayStatus = getDisplayStatus(s);
                   return (
                     <tr key={s.id} style={{ borderBottom: "1px solid #f1f5f9" }}>
+                      <td style={{ padding: "0.875rem 1rem", fontWeight: 500, color: "#1e293b", whiteSpace: "nowrap" }}>
+                        {s.time}{s.end_time ? ` – ${s.end_time}` : ""}
+                      </td>
                       <td style={{ padding: "0.875rem 1rem", fontWeight: 500, color: "#1e293b" }}>{s.subject}</td>
                       <td style={{ padding: "0.875rem 1rem", fontFamily: "monospace", fontSize: "0.75rem", color: "#64748b" }}>{s.subject_code}</td>
                       <td style={{ padding: "0.875rem 1rem" }}>
@@ -263,9 +425,6 @@ export default function SchedulesTab() {
                             {s.block}
                           </span>
                         ) : "—"}
-                      </td>
-                      <td style={{ padding: "0.875rem 1rem", fontSize: "0.75rem", color: "#64748b", whiteSpace: "nowrap" }}>
-                        {s.time}{s.end_time ? ` – ${s.end_time}` : ""}
                       </td>
                       <td style={{ padding: "0.875rem 1rem" }}>
                         <span style={{ padding: "2px 8px", borderRadius: "999px", fontSize: "0.7rem", fontWeight: 600, background: dayColors[s.day]?.bg, color: dayColors[s.day]?.color }}>{s.day}</span>
